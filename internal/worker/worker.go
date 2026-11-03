@@ -16,15 +16,16 @@ import (
 
 // Worker reserves and processes manual batches in the background.
 type Worker struct {
-	ctx        context.Context
-	queue      Queue
-	downloader Downloader
-	options    Options
-	runs       sync.WaitGroup
-	stateMu    sync.Mutex
-	running    bool
-	wait       func(context.Context, time.Duration) error
-	pause      func(time.Duration, time.Duration) time.Duration
+	ctx             context.Context
+	queue           Queue
+	downloader      Downloader
+	options         Options
+	runs            sync.WaitGroup
+	stateMu         sync.Mutex
+	running         bool
+	resumeRequested bool
+	wait            func(context.Context, time.Duration) error
+	pause           func(time.Duration, time.Duration) time.Duration
 }
 
 // New creates a worker tied to the service context.
@@ -82,6 +83,13 @@ func (w *Worker) Resume(ctx context.Context) error {
 	if err := w.queue.SetPaused(ctx, false); err != nil {
 		return err
 	}
+	w.stateMu.Lock()
+	if w.running {
+		w.resumeRequested = true
+		w.stateMu.Unlock()
+		return nil
+	}
+	w.stateMu.Unlock()
 	run, err := w.queue.GetActiveRun(ctx)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil
@@ -115,7 +123,14 @@ func (w *Worker) process(run store.DownloadRun) {
 	defer func() {
 		w.stateMu.Lock()
 		w.running = false
+		resumeRequested := w.resumeRequested
+		w.resumeRequested = false
 		w.stateMu.Unlock()
+		if resumeRequested {
+			if activeRun, err := w.queue.GetActiveRun(w.ctx); err == nil {
+				w.launch(activeRun)
+			}
+		}
 		w.runs.Done()
 	}()
 	failed, attempted := false, false
