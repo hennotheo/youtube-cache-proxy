@@ -14,6 +14,7 @@ func TestDownloaderPassesArgumentsAndStopsProcessWhenContextIsCanceled(t *testin
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	readyPath := filepath.Join(t.TempDir(), "ready")
+	outputTemplate := testOutputTemplate(t)
 
 	type commandCall struct {
 		name string
@@ -35,8 +36,8 @@ func TestDownloaderPassesArgumentsAndStopsProcessWhenContextIsCanceled(t *testin
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := downloader.Download(ctx, "abc123def45", "data/audio/abc123def45.%(ext)s", DownloadLimits{
-			MaxBytes: 1000, MaxDurationSeconds: 3600, Timeout: 5 * time.Second,
+		_, err := downloader.Download(ctx, "abc123def45", outputTemplate, DownloadLimits{
+			MaxBytes: 1000, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: 5 * time.Second,
 		})
 		done <- err
 	}()

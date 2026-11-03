@@ -113,6 +113,40 @@ func actualOutputSize(outputTemplate string) (int64, error) {
 	return size, nil
 }
 
+func publishOutput(stagingTemplate, finalTemplate string) error {
+	stagedFiles, err := outputFiles(stagingTemplate, false)
+	if err != nil {
+		return err
+	}
+	if len(stagedFiles) != 1 {
+		return fmt.Errorf("expected one completed audio file, found %d", len(stagedFiles))
+	}
+	finalDirectory := filepath.Dir(finalTemplate)
+	if err := os.MkdirAll(finalDirectory, 0700); err != nil {
+		return fmt.Errorf("prepare audio directory: %w", err)
+	}
+	stagingID, err := outputVideoID(stagingTemplate)
+	if err != nil {
+		return err
+	}
+	finalID, err := outputVideoID(finalTemplate)
+	if err != nil {
+		return err
+	}
+	stagedName := filepath.Base(stagedFiles[0])
+	extension := strings.TrimPrefix(stagedName, stagingID+".")
+	finalPath := filepath.Join(finalDirectory, finalID+"."+extension)
+	if _, err := os.Lstat(finalPath); err == nil {
+		return fmt.Errorf("audio output already exists")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(stagedFiles[0], finalPath); err != nil {
+		return fmt.Errorf("publish audio output: %w", err)
+	}
+	return nil
+}
+
 func removeOutputFiles(outputTemplate string) error {
 	partials, err := outputFiles(outputTemplate, true)
 	if err != nil && !os.IsNotExist(err) {

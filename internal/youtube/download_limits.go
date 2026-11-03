@@ -9,6 +9,8 @@ import (
 type DownloadLimits struct {
 	// MaxBytes is the maximum completed audio size in bytes.
 	MaxBytes int64
+	// MaxRateBytesPerSecond caps the transfer rate.
+	MaxRateBytesPerSecond int64
 	// MaxDurationSeconds is the maximum media duration in seconds.
 	MaxDurationSeconds int64
 	// Timeout bounds metadata lookup and download time together.
@@ -18,6 +20,9 @@ type DownloadLimits struct {
 func (limits DownloadLimits) validate() error {
 	if limits.MaxBytes <= 0 {
 		return fmt.Errorf("maximum download size must be positive")
+	}
+	if limits.MaxRateBytesPerSecond <= 0 {
+		return fmt.Errorf("maximum download rate must be positive")
 	}
 	if limits.MaxDurationSeconds <= 0 {
 		return fmt.Errorf("maximum video duration must be positive")
