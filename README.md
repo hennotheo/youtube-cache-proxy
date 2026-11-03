@@ -10,6 +10,7 @@ Le dépôt contient les fondations du backend :
 - `GET /health`, qui renvoie `{"status":"ok"}` ;
 - une configuration par variables d'environnement, avec validation des limites de téléchargement et de reprise ;
 - un stockage SQLite avec migrations et opérations de file d'attente ;
+- une suppression atomique des sources, refusée tant qu'elles appartiennent à un lot actif ;
 - un composant interne d'extraction des métadonnées et de téléchargement audio via `yt-dlp`, avec limites de durée, taille, débit et délai d'exécution ;
 - un moteur interne qui réserve un lot manuel puis traite ses téléchargements en arrière-plan ;
 - une classification des erreurs `yt-dlp` pour distinguer les échecs réseau relançables des erreurs définitives.
