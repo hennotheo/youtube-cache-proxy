@@ -24,14 +24,21 @@ func TestDownloaderPassesArgumentsAndStopsProcessWhenContextIsCanceled(t *testin
 		executable: "yt-dlp",
 		commandContext: func(ctx context.Context, name string, args ...string) *exec.Cmd {
 			invocations <- commandCall{name: name, args: append([]string(nil), args...)}
+			mode := "download"
+			if containsArgument(args, "--dump-single-json") {
+				mode = "metadata"
+			}
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestDownloaderHelperProcess$")
-			cmd.Env = append(os.Environ(), "YTDLP_TEST_HELPER=1", "YTDLP_TEST_READY_FILE="+readyPath)
+			cmd.Env = append(os.Environ(), "YTDLP_TEST_HELPER=1", "YTDLP_TEST_MODE="+mode, "YTDLP_TEST_READY_FILE="+readyPath)
 			return cmd
 		},
 	}
 	done := make(chan error, 1)
 	go func() {
-		done <- downloader.Download(ctx, "abc123def45", "data/audio/abc123def45.%(ext)s")
+		_, err := downloader.Download(ctx, "abc123def45", "data/audio/abc123def45.%(ext)s", DownloadLimits{
+			MaxBytes: 1000, MaxDurationSeconds: 3600, Timeout: 5 * time.Second,
+		})
+		done <- err
 	}()
 
 	call := <-invocations
@@ -66,6 +73,10 @@ func TestDownloaderPassesArgumentsAndStopsProcessWhenContextIsCanceled(t *testin
 func TestDownloaderHelperProcess(t *testing.T) {
 	if os.Getenv("YTDLP_TEST_HELPER") != "1" {
 		return
+	}
+	if os.Getenv("YTDLP_TEST_MODE") == "metadata" {
+		_, _ = os.Stdout.WriteString(`{"title":"test","duration":60}`)
+		os.Exit(0)
 	}
 	if err := os.WriteFile(os.Getenv("YTDLP_TEST_READY_FILE"), []byte("ready"), 0600); err != nil {
 		t.Fatal(err)

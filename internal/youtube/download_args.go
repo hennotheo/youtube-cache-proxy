@@ -2,12 +2,12 @@ package youtube
 
 import "fmt"
 
-func buildDownloadArgs(videoID, outputTemplate string) ([]string, error) {
+func buildDownloadArgs(videoID, outputTemplate string, maxBytes int64) ([]string, error) {
 	if !videoIDPattern.MatchString(videoID) {
 		return nil, fmt.Errorf("%w: invalid video ID", ErrInvalidVideoURL)
 	}
-	if outputTemplate == "" {
-		return nil, fmt.Errorf("download output template is required")
+	if validateOutputTemplate(outputTemplate, videoID) != nil || maxBytes <= 0 {
+		return nil, fmt.Errorf("download output template and positive maximum size are required")
 	}
 
 	canonicalURL := "https://www.youtube.com/watch?v=" + videoID
@@ -16,7 +16,11 @@ func buildDownloadArgs(videoID, outputTemplate string) ([]string, error) {
 		"--no-cookies",
 		"--no-cookies-from-browser",
 		"--no-playlist",
+		"--format", "bestaudio/best",
+		"--max-filesize", fmt.Sprint(maxBytes),
 		"--no-progress",
+		"--part",
+		"--no-overwrites",
 		"--output", outputTemplate,
 		canonicalURL,
 	}, nil
