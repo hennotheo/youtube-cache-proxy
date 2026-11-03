@@ -8,6 +8,7 @@ Le dépôt contient les fondations du backend :
 
 - un serveur HTTP avec arrêt propre sur `SIGINT` et `SIGTERM` ;
 - une API REST pour ajouter, filtrer, consulter et supprimer des sources, lancer un lot manuel, relancer une demande échouée, servir l'audio et contrôler le worker ;
+- une extraction des métadonnées YouTube sans audio à l'ajout : chaîne, miniature, publication, description, tags, catégories, vues, langue et état du direct ;
 - `GET /health`, qui renvoie `{"status":"ok"}` ;
 - une configuration par variables d'environnement, avec validation des limites de téléchargement et de reprise ;
 - un stockage SQLite avec migrations et opérations de file d'attente ;
@@ -20,15 +21,17 @@ Le dépôt contient les fondations du backend :
 
 L'API exige un jeton Bearer : le rôle `producer` peut ajouter et consulter les sources et récupérer l'audio ; le rôle `admin` peut aussi démarrer des lots, relancer ou supprimer une source et contrôler le worker. `/health` reste public. L'endpoint audio utilise le service de fichiers Go, qui prend en charge les requêtes Range.
 
+`POST /sources` lance une requête yt-dlp limitée aux métadonnées (30 secondes maximum), sans téléchargement audio. Si YouTube ou yt-dlp ne renvoie pas les détails, la source reste créée en `pending` et les champs indisponibles sont omis. Les métadonnées enrichies apparaissent également dans les réponses de liste et de détail.
+
 Configure `PRODUCER_TOKEN` et `ADMIN_TOKEN` avec deux valeurs différentes d'au moins 32 caractères. Les deux variables sont obligatoires au démarrage.
 
 ## API REST actuelle
 
 | Méthode | Endpoint | Description |
 |---|---|---|
-| `POST` | `/sources` | Producer/Admin : ajouter une URL YouTube (`{"url":"https://..."}`) |
-| `GET` | `/sources?status=pending&limit=50&offset=0` | Producer/Admin : lister et filtrer les sources |
-| `GET` | `/sources/{id}` | Producer/Admin : lire une demande |
+| `POST` | `/sources` | Producer/Admin : ajouter une URL YouTube et récupérer ses métadonnées (`{"url":"https://..."}`) |
+| `GET` | `/sources?status=pending&limit=50&offset=0` | Producer/Admin : lister et filtrer les sources avec leurs métadonnées |
+| `GET` | `/sources/{id}` | Producer/Admin : lire une demande et ses métadonnées |
 | `GET` | `/sources/{id}/audio` | Producer/Admin : récupérer l'audio prêt, avec support Range natif |
 | `POST` | `/downloads/run` | Admin : démarrer un lot asynchrone (`{"count":3}`) |
 | `POST` | `/sources/{id}/retry` | Admin : remettre une demande échouée en attente |

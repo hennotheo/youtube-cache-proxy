@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/hennotheo/youtube-cache-proxy/internal/store"
+	"github.com/hennotheo/youtube-cache-proxy/internal/youtube"
 )
 
 // Repository contains the persistent operations exposed through the REST API.
@@ -16,6 +17,12 @@ type Repository interface {
 	DeleteSource(context.Context, int64) error
 	RetrySource(context.Context, int64) error
 	GetWorkerStatus(context.Context) (store.WorkerStatus, error)
+	UpdateSourceMetadata(context.Context, int64, youtube.VideoMetadata) error
+}
+
+// MetadataProvider retrieves YouTube details without downloading media.
+type MetadataProvider interface {
+	FetchMetadata(context.Context, string) (youtube.VideoMetadata, error)
 }
 
 // BatchWorker starts and controls manual download batches.
@@ -29,14 +36,15 @@ type BatchWorker interface {
 type API struct {
 	repository        Repository
 	worker            BatchWorker
+	metadataProvider  MetadataProvider
 	producerTokenHash [sha256.Size]byte
 	adminTokenHash    [sha256.Size]byte
 }
 
 // NewAPI constructs the REST API with its persistent store, worker, and access tokens.
-func NewAPI(repository Repository, worker BatchWorker, producerToken, adminToken string) *API {
+func NewAPI(repository Repository, worker BatchWorker, metadataProvider MetadataProvider, producerToken, adminToken string) *API {
 	return &API{
-		repository: repository, worker: worker,
+		repository: repository, worker: worker, metadataProvider: metadataProvider,
 		producerTokenHash: sha256.Sum256([]byte(producerToken)),
 		adminTokenHash:    sha256.Sum256([]byte(adminToken)),
 	}

@@ -20,16 +20,25 @@ func (s *Store) CompleteAttempt(ctx context.Context, attemptID int64, audio Audi
 	if err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE sources SET status = 'ready', title = ?, duration_seconds = ?,
+	result, err := tx.ExecContext(ctx, `UPDATE sources SET status = 'ready',
 		audio_path = ?, audio_mime = ?, audio_size_bytes = ?, error_code = NULL, error_message = NULL,
 		completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-		WHERE id = ? AND status = 'downloading'`, audio.Title, audio.DurationSeconds,
-		audio.Path, audio.Mime, audio.SizeBytes, sourceID)
+		WHERE id = ? AND status = 'downloading'`, audio.Path, audio.Mime, audio.SizeBytes, sourceID)
 	if err != nil {
 		return err
 	}
 	if count, _ := result.RowsAffected(); count != 1 {
 		return ErrConflict
+	}
+	metadata := audio.Metadata
+	if metadata.Title == "" {
+		metadata.Title = audio.Title
+	}
+	if metadata.DurationSeconds <= 0 {
+		metadata.DurationSeconds = audio.DurationSeconds
+	}
+	if err := persistSourceMetadata(ctx, tx, sourceID, metadata); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE download_attempts SET status = 'succeeded',
 		finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`, attemptID); err != nil {

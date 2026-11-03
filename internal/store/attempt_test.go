@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/hennotheo/youtube-cache-proxy/internal/youtube"
 )
 
 func TestCompleteAttemptMakesSourceReadyAndRecordsSuccess(t *testing.T) {
@@ -37,6 +39,40 @@ func TestCompleteAttemptMakesSourceReadyAndRecordsSuccess(t *testing.T) {
 	}
 	if err := s.CompleteAttempt(ctx, attempt.ID, AudioResult{Path: "audio/b.m4a", Mime: "audio/mp4", SizeBytes: 1}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("second completion error=%v, want ErrConflict", err)
+	}
+}
+
+func TestCompleteAttemptKeepsPreviouslyFetchedMetadataWhenFieldsAreOmitted(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	source, err := s.CreateSource(ctx, "aaaaaaaaaaa", "https://www.youtube.com/watch?v=aaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateSourceMetadata(ctx, source.ID, youtube.VideoMetadata{
+		ChannelName: "A channel", ThumbnailURL: "https://example.test/thumb.jpg", Tags: []string{"tag"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := s.ReserveRun(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, attempt, err := s.StartNext(ctx, run.ID, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CompleteAttempt(ctx, attempt.ID, AudioResult{
+		Title: "A title", DurationSeconds: 12, Path: "audio/a.m4a", Mime: "audio/mp4", SizeBytes: 1234,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := s.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.ChannelName.String != "A channel" || completed.ThumbnailURL.String != "https://example.test/thumb.jpg" || completed.TagsJSON.String != `["tag"]` {
+		t.Fatalf("previous metadata was cleared by an incomplete refresh: %+v", completed)
 	}
 }
 

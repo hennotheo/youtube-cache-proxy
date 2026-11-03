@@ -129,6 +129,36 @@ func TestBatchRecordsFailuresAndContinuesWithTheNextReservedSource(t *testing.T)
 	}
 }
 
+func TestSuccessfulDownloadPersistsExtendedVideoMetadata(t *testing.T) {
+	ctx := context.Background()
+	queue, err := store.Open(ctx, filepath.Join(t.TempDir(), "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	source, err := queue.CreateSource(ctx, "aaaaaaaaaaa", "https://www.youtube.com/watch?v=aaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := youtube.VideoMetadata{Title: "A title", DurationSeconds: 12, ChannelName: "A channel", ThumbnailURL: "https://example.test/thumb.jpg"}
+	downloader := &fakeDownloader{metadataResult: &metadata}
+	worker, err := New(ctx, queue, downloader, testWorkerOptions(filepath.Join(t.TempDir(), "audio")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := worker.Start(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	worker.Wait()
+	completed, err := queue.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Status != "ready" || completed.ChannelName.String != "A channel" || completed.ThumbnailURL.String != metadata.ThumbnailURL {
+		t.Fatalf("completed source metadata = %+v", completed)
+	}
+}
+
 func TestBatchWaitsForRandomPauseOnlyBetweenAttempts(t *testing.T) {
 	ctx := context.Background()
 	queue, err := store.Open(ctx, filepath.Join(t.TempDir(), "queue.db"))
@@ -235,6 +265,7 @@ type fakeDownloader struct {
 	release        chan struct{}
 	failureVideoID string
 	failure        error
+	metadataResult *youtube.VideoMetadata
 }
 
 func (d *fakeDownloader) Download(ctx context.Context, videoID, outputTemplate string, _ youtube.DownloadLimits) (youtube.VideoMetadata, error) {
@@ -257,6 +288,9 @@ func (d *fakeDownloader) Download(ctx context.Context, videoID, outputTemplate s
 	}
 	if err := os.WriteFile(outputPath, []byte("audio"), 0600); err != nil {
 		return youtube.VideoMetadata{}, err
+	}
+	if d.metadataResult != nil {
+		return *d.metadataResult, nil
 	}
 	return youtube.VideoMetadata{Title: videoID, DurationSeconds: 12, SizeBytes: 5}, nil
 }

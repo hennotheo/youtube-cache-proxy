@@ -46,6 +46,43 @@ func TestApplyMigrationsIsRepeatableAndPreservesData(t *testing.T) {
 	}
 }
 
+func TestMetadataMigrationPreservesExistingSources(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"0001_initial.sql", "0002_one_active_run.sql"} {
+		script, err := migrationFiles.ReadFile("migrations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := applyMigration(ctx, db, name, string(script)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO sources
+		(video_id, url, status, title, created_at, updated_at)
+		VALUES ('abc123def45', 'https://www.youtube.com/watch?v=abc123def45', 'pending', 'Old title', '2026-11-03T00:00:00Z', '2026-11-03T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	source, err := scanSource(db.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM sources WHERE video_id = ?`, "abc123def45"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !source.Title.Valid || source.Title.String != "Old title" || source.ChannelName.Valid || source.TagsJSON.Valid {
+		t.Fatalf("old source after metadata migration = %+v", source)
+	}
+}
+
 func TestMigrationEnforcesSourceAndRunConstraints(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "queue.db"))
 	if err != nil {

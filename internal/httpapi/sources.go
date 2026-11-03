@@ -40,6 +40,18 @@ func (a *API) createSource(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	metadata, err := a.metadataProvider.FetchMetadata(r.Context(), videoID)
+	if err == nil {
+		if err := a.repository.UpdateSourceMetadata(r.Context(), source.ID, metadata); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		source, err = a.repository.GetSource(r.Context(), source.ID)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	writeJSON(w, http.StatusCreated, toSourceResponse(source))
 }
 

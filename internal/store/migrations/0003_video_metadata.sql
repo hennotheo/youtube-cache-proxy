@@ -1,0 +1,11 @@
+ALTER TABLE sources ADD COLUMN channel_name TEXT;
+ALTER TABLE sources ADD COLUMN channel_id TEXT;
+ALTER TABLE sources ADD COLUMN channel_url TEXT;
+ALTER TABLE sources ADD COLUMN thumbnail_url TEXT;
+ALTER TABLE sources ADD COLUMN published_at TEXT;
+ALTER TABLE sources ADD COLUMN description TEXT;
+ALTER TABLE sources ADD COLUMN tags_json TEXT;
+ALTER TABLE sources ADD COLUMN categories_json TEXT;
+ALTER TABLE sources ADD COLUMN view_count INTEGER CHECK (view_count IS NULL OR view_count >= 0);
+ALTER TABLE sources ADD COLUMN language TEXT;
+ALTER TABLE sources ADD COLUMN live_status TEXT;
