@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -68,7 +69,12 @@ func (a *API) listSources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := query.Get("status")
-	sources, err := a.repository.ListSources(r.Context(), status, limit, offset)
+	videoID, ok := sourceVideoIDFilter(query)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid video_id filter")
+		return
+	}
+	sources, err := a.repository.ListSources(r.Context(), status, videoID, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid source filter or pagination")
 		return
@@ -78,6 +84,21 @@ func (a *API) listSources(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toSourceResponse(source))
 	}
 	writeJSON(w, http.StatusOK, sourceListResponse{Items: items, Limit: limit, Offset: offset})
+}
+
+func sourceVideoIDFilter(query url.Values) (string, bool) {
+	values, present := query["video_id"]
+	if !present {
+		return "", true
+	}
+	if len(values) != 1 || values[0] == "" {
+		return "", false
+	}
+	videoID, _, err := youtube.ParseVideoURL("https://www.youtube.com/watch?v=" + url.QueryEscape(values[0]))
+	if err != nil {
+		return "", false
+	}
+	return videoID, true
 }
 
 func (a *API) source(w http.ResponseWriter, r *http.Request) {

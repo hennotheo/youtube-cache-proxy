@@ -12,7 +12,7 @@ import (
 // Repository contains the persistent operations exposed through the REST API.
 type Repository interface {
 	CreateSource(context.Context, string, string) (store.Source, error)
-	ListSources(context.Context, string, int, int) ([]store.Source, error)
+	ListSources(context.Context, string, string, int, int) ([]store.Source, error)
 	GetSource(context.Context, int64) (store.Source, error)
 	DeleteSource(context.Context, int64) error
 	RetrySource(context.Context, int64) error

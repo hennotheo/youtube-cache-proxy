@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// ListSources returns a page of newest sources, optionally filtered by status.
-func (s *Store) ListSources(ctx context.Context, status string, limit, offset int) ([]Source, error) {
+// ListSources returns a page of newest sources, optionally filtered by status and video ID.
+func (s *Store) ListSources(ctx context.Context, status, videoID string, limit, offset int) ([]Source, error) {
 	if status != "" && status != "pending" && status != "downloading" && status != "ready" && status != "failed" {
 		return nil, fmt.Errorf("invalid source status")
 	}
@@ -14,7 +14,8 @@ func (s *Store) ListSources(ctx context.Context, status string, limit, offset in
 		return nil, fmt.Errorf("invalid pagination")
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sourceColumns+` FROM sources
-		WHERE (? = '' OR status = ?) ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, limit, offset)
+		WHERE (? = '' OR status = ?) AND (? = '' OR video_id = ?)
+		ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, status, status, videoID, videoID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list sources: %w", err)
 	}
