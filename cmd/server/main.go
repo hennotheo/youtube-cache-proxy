@@ -47,7 +47,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("HTTP server listening on %s", listener.Addr())
-	api := httpapi.NewAPI(queue, batchWorker)
+	api := httpapi.NewAPI(queue, batchWorker, settings.ProducerToken, settings.AdminToken)
 	if err := server.Run(ctx, listener, httpapi.NewRouter(api)); err != nil {
 		log.Fatal(err)
 	}
