@@ -10,6 +10,7 @@ import (
 	"github.com/hennotheo/youtube-cache-proxy/internal/config"
 	"github.com/hennotheo/youtube-cache-proxy/internal/httpapi"
 	"github.com/hennotheo/youtube-cache-proxy/internal/server"
+	"github.com/hennotheo/youtube-cache-proxy/internal/store"
 )
 
 func main() {
@@ -19,6 +20,11 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	queue, err := store.Open(ctx, settings.SQLitePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer queue.Close()
 
 	listener, err := net.Listen("tcp", settings.HTTPAddr)
 	if err != nil {
