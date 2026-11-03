@@ -159,6 +159,110 @@ func TestSuccessfulDownloadPersistsExtendedVideoMetadata(t *testing.T) {
 	}
 }
 
+func TestPauseFinishesCurrentVideoAndResumeContinuesSameRun(t *testing.T) {
+	ctx := context.Background()
+	queue, err := store.Open(ctx, filepath.Join(t.TempDir(), "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	first, err := queue.CreateSource(ctx, "aaaaaaaaaaa", "https://www.youtube.com/watch?v=aaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := queue.CreateSource(ctx, "bbbbbbbbbbb", "https://www.youtube.com/watch?v=bbbbbbbbbbb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloader := &fakeDownloader{started: make(chan struct{}, 1), release: make(chan struct{})}
+	worker, err := New(ctx, queue, downloader, testWorkerOptions(filepath.Join(t.TempDir(), "audio")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.wait = func(context.Context, time.Duration) error { return nil }
+	run, err := worker.Start(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-downloader.started:
+	case <-time.After(time.Second):
+		t.Fatal("first video did not start")
+	}
+	if err := worker.Pause(ctx); err != nil {
+		t.Fatal(err)
+	}
+	close(downloader.release)
+	worker.Wait()
+	completedFirst, err := queue.GetSource(ctx, first.ID)
+	if err != nil || completedFirst.Status != "ready" {
+		t.Fatalf("current video after pause: status=%q err=%v", completedFirst.Status, err)
+	}
+	untouchedSecond, err := queue.GetSource(ctx, second.ID)
+	if err != nil || untouchedSecond.Status != "pending" {
+		t.Fatalf("next video after pause: status=%q err=%v", untouchedSecond.Status, err)
+	}
+	activeRun, err := queue.GetActiveRun(ctx)
+	if err != nil || activeRun.ID != run.ID {
+		t.Fatalf("paused run = %+v err=%v, want original active run %d", activeRun, err, run.ID)
+	}
+	if err := worker.Resume(ctx); err != nil {
+		t.Fatal(err)
+	}
+	worker.Wait()
+	completedSecond, err := queue.GetSource(ctx, second.ID)
+	if err != nil || completedSecond.Status != "ready" {
+		t.Fatalf("second video after resume: status=%q err=%v", completedSecond.Status, err)
+	}
+	if _, err := queue.GetActiveRun(ctx); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("active run after resume = %v, want no active run", err)
+	}
+}
+
+func TestWorkerDoesNotRestartInterruptedRunAfterStoreReopens(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "queue.db")
+	queue, err := store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := queue.CreateSource(ctx, "aaaaaaaaaaa", "https://www.youtube.com/watch?v=aaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := queue.ReserveRun(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := queue.StartNext(ctx, run.ID, 50); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	downloader := &fakeDownloader{}
+	worker, err := New(ctx, queue, downloader, testWorkerOptions(filepath.Join(t.TempDir(), "audio")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.Wait()
+	interrupted, err := queue.GetSource(ctx, source.ID)
+	if err != nil || interrupted.Status != "pending" || interrupted.AttemptCount != 1 {
+		t.Fatalf("recovered source = status %q attempts %d err=%v", interrupted.Status, interrupted.AttemptCount, err)
+	}
+	if downloader.calls != 0 {
+		t.Fatalf("download calls after reopening = %d, want zero", downloader.calls)
+	}
+	if _, err := queue.GetActiveRun(ctx); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("active run after reopening = %v, want none", err)
+	}
+}
+
 func TestBatchWaitsForRandomPauseOnlyBetweenAttempts(t *testing.T) {
 	ctx := context.Background()
 	queue, err := store.Open(ctx, filepath.Join(t.TempDir(), "queue.db"))
@@ -266,9 +370,11 @@ type fakeDownloader struct {
 	failureVideoID string
 	failure        error
 	metadataResult *youtube.VideoMetadata
+	calls          int
 }
 
 func (d *fakeDownloader) Download(ctx context.Context, videoID, outputTemplate string, _ youtube.DownloadLimits) (youtube.VideoMetadata, error) {
+	d.calls++
 	if d.started != nil {
 		d.started <- struct{}{}
 	}
