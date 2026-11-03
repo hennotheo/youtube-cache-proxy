@@ -19,13 +19,15 @@ Le dépôt contient les fondations du backend :
 
 **L'API de base est maintenant utilisable, mais le projet reste en développement.** Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable. Il n'y a pas encore d'interface utilisateur ni de configuration Docker Compose dans le dépôt.
 
+Une image Docker multi-architecture `linux/amd64` et `linux/arm64` est disponible via le Dockerfile. Elle inclut Go 1.27.3 au build, Python 3.13.18, yt-dlp 2026.10.26, yt-dlp-ejs 0.8.0, Deno 2.9.8 et FFmpeg 5.1.9. Le service s'exécute sans privilèges root et utilise `/data` pour la base SQLite et les fichiers audio. La configuration Compose avec volumes persistants et healthcheck reste à venir.
+
 L'API exige un jeton Bearer : le rôle `producer` peut ajouter et consulter les sources et récupérer l'audio ; le rôle `admin` peut aussi démarrer des lots, relancer ou supprimer une source et contrôler le worker. `/health` reste public. L'endpoint audio utilise le service de fichiers Go, qui prend en charge les requêtes Range.
 
 La pause laisse la vidéo en cours se terminer, puis conserve le lot actif pour la reprise. Au redémarrage du service, un lot actif est marqué `interrupted` et ses sources inachevées redeviennent `pending` ; aucun téléchargement ne reprend sans nouveau lancement explicite.
 
 `POST /sources` lance une requête yt-dlp limitée aux métadonnées (30 secondes maximum), sans téléchargement audio. Si YouTube ou yt-dlp ne renvoie pas les détails, la source reste créée en `pending` et les champs indisponibles sont omis. Les métadonnées enrichies apparaissent également dans les réponses de liste et de détail.
 
-Configure `PRODUCER_TOKEN` et `ADMIN_TOKEN` avec deux valeurs différentes d'au moins 32 caractères. Les deux variables sont obligatoires au démarrage.
+Configure `PRODUCER_TOKEN`, `ADMIN_TOKEN` et `SESSION_SECRET` avec trois valeurs distinctes d'au moins 32 caractères. Ces trois variables sont obligatoires au démarrage.
 
 ## API REST actuelle
 
@@ -65,7 +67,28 @@ Réponse attendue :
 
 Le serveur lit sa configuration depuis l'environnement. Les valeurs par défaut incluent `HTTP_ADDR=127.0.0.1:8080`, `SQLITE_PATH=data/queue.db` et `AUDIO_DIR=data/audio`. Les autres paramètres et leurs contraintes sont définis dans `internal/config`.
 
-Le binaire `yt-dlp` doit être installé et disponible dans `PATH` pour traiter les lots démarrés via l'API.
+Lorsqu'il est lancé directement hors conteneur, le binaire `yt-dlp` doit être installé et disponible dans `PATH` pour traiter les lots démarrés via l'API. L'image Docker fournit yt-dlp, Deno et FFmpeg.
+
+## Construire et lancer l'image Docker
+
+Avec Docker Buildx, construire l'image ARM64 destinée notamment au Raspberry Pi :
+
+```sh
+docker buildx build --platform linux/arm64 --load -t youtube-cache-proxy:local .
+```
+
+Sur une machine ARM64, `docker build -t youtube-cache-proxy:local .` utilise directement son architecture native. Pour lancer le conteneur, fournir les deux jetons et le secret de session requis :
+
+```sh
+docker run --rm -p 8080:8080 \
+  -e PRODUCER_TOKEN="<jeton-producer-de-32-caracteres-minimum>" \
+  -e ADMIN_TOKEN="<jeton-admin-different-de-32-caracteres-minimum>" \
+  -e SESSION_SECRET="<secret-session-different-des-jetons>" \
+  -v youtube-cache-data:/data \
+  youtube-cache-proxy:local
+```
+
+L'image écoute sur `0.0.0.0:8080` et conserve SQLite et les fichiers audio dans `/data`. Une commande Docker Compose avec volumes et healthcheck sera ajoutée dans une issue suivante.
 
 ## Vérifications
 
