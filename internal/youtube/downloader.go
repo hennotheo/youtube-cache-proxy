@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -51,21 +53,30 @@ func (d *Downloader) Download(ctx context.Context, videoID, outputTemplate strin
 		return VideoMetadata{}, errors.Join(ErrDownloadTooLarge, cleanupPartialFiles(outputTemplate))
 	}
 
-	if err := d.runDownload(operationCtx, videoID, outputTemplate, limits.MaxBytes); err != nil {
+	stagingDir, err := os.MkdirTemp(filepath.Dir(outputTemplate), ".download-"+videoID+"-")
+	if err != nil {
+		return VideoMetadata{}, fmt.Errorf("create staging directory: %w", err)
+	}
+	defer os.RemoveAll(stagingDir)
+	stagingTemplate := filepath.Join(stagingDir, videoID+"."+outputExtensionTemplate)
+	if err := d.runDownload(operationCtx, videoID, stagingTemplate, limits.MaxBytes, limits.MaxRateBytesPerSecond); err != nil {
 		return VideoMetadata{}, err
 	}
-	metadata.SizeBytes, err = actualOutputSize(outputTemplate)
+	metadata.SizeBytes, err = actualOutputSize(stagingTemplate)
 	if err != nil {
-		return VideoMetadata{}, errors.Join(err, cleanupPartialFiles(outputTemplate))
+		return VideoMetadata{}, errors.Join(err, cleanupPartialFiles(stagingTemplate))
 	}
 	if metadata.SizeBytes > limits.MaxBytes {
-		return VideoMetadata{}, errors.Join(ErrDownloadTooLarge, removeOutputFiles(outputTemplate))
+		return VideoMetadata{}, errors.Join(ErrDownloadTooLarge, removeOutputFiles(stagingTemplate))
+	}
+	if err := publishOutput(stagingTemplate, outputTemplate); err != nil {
+		return VideoMetadata{}, err
 	}
 	return metadata, nil
 }
 
-func (d *Downloader) runDownload(ctx context.Context, videoID, outputTemplate string, maxBytes int64) error {
-	args, err := buildDownloadArgs(videoID, outputTemplate, maxBytes)
+func (d *Downloader) runDownload(ctx context.Context, videoID, outputTemplate string, maxBytes, maxRateBytesPerSecond int64) error {
+	args, err := buildDownloadArgs(videoID, outputTemplate, maxBytes, maxRateBytesPerSecond)
 	if err != nil {
 		return err
 	}

@@ -22,19 +22,19 @@ func TestDownloadRejectsMetadataOutsideLimitsBeforeTransfer(t *testing.T) {
 		{
 			name:     "duration",
 			metadata: `{"title":"test","duration":3601,"filesize":100}`,
-			limits:   DownloadLimits{MaxBytes: 1000, MaxDurationSeconds: 3600, Timeout: time.Second},
+			limits:   DownloadLimits{MaxBytes: 1000, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: time.Second},
 			wantErr:  ErrVideoTooLong,
 		},
 		{
 			name:     "known filesize",
 			metadata: `{"title":"test","duration":60,"filesize":1001}`,
-			limits:   DownloadLimits{MaxBytes: 1000, MaxDurationSeconds: 3600, Timeout: time.Second},
+			limits:   DownloadLimits{MaxBytes: 1000, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: time.Second},
 			wantErr:  ErrDownloadTooLarge,
 		},
 		{
 			name:     "unknown duration",
 			metadata: `{"title":"test","filesize":100}`,
-			limits:   DownloadLimits{MaxBytes: 1000, MaxDurationSeconds: 3600, Timeout: time.Second},
+			limits:   DownloadLimits{MaxBytes: 1000, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: time.Second},
 			wantErr:  ErrVideoDurationUnknown,
 		},
 	} {
@@ -57,7 +57,7 @@ func TestDownloadRejectsOutputTemplateForAnotherVideo(t *testing.T) {
 	outputTemplate := filepath.Join(t.TempDir(), "differentID1.%(ext)s")
 	d := newLimitsTestDownloader(t, "complete", `{"title":"test","duration":60}`, outputTemplate, &calls)
 	_, err := d.Download(context.Background(), "abc123def45", outputTemplate, DownloadLimits{
-		MaxBytes: 1000, MaxDurationSeconds: 3600, Timeout: time.Second,
+		MaxBytes: 1000, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: time.Second,
 	})
 	if err == nil {
 		t.Fatal("output template for a different video was accepted")
@@ -69,32 +69,26 @@ func TestDownloadRejectsOutputTemplateForAnotherVideo(t *testing.T) {
 
 func TestDownloadStopsWhenActualBytesExceedLimitAndRemovesPartial(t *testing.T) {
 	outputTemplate := testOutputTemplate(t)
-	partialPath := filepath.Join(filepath.Dir(outputTemplate), "abc123def45.webm.part")
 	d := newLimitsTestDownloader(t, "oversize", `{"title":"test","duration":60}`, outputTemplate, nil)
 	_, err := d.Download(context.Background(), "abc123def45", outputTemplate, DownloadLimits{
-		MaxBytes: 100, MaxDurationSeconds: 3600, Timeout: 3 * time.Second,
+		MaxBytes: 100, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: 3 * time.Second,
 	})
 	if !errors.Is(err, ErrDownloadTooLarge) {
 		t.Fatalf("Download error = %v, want ErrDownloadTooLarge", err)
 	}
-	if _, err := os.Stat(partialPath); !os.IsNotExist(err) {
-		t.Fatalf("partial file still exists after size limit: stat error = %v", err)
-	}
+	assertNoStagingDirectories(t, filepath.Dir(outputTemplate))
 }
 
 func TestDownloadTimeoutStopsProcessAndRemovesPartial(t *testing.T) {
 	outputTemplate := testOutputTemplate(t)
-	partialPath := filepath.Join(filepath.Dir(outputTemplate), "abc123def45.webm.part")
 	d := newLimitsTestDownloader(t, "wait", `{"title":"test","duration":60}`, outputTemplate, nil)
 	_, err := d.Download(context.Background(), "abc123def45", outputTemplate, DownloadLimits{
-		MaxBytes: 1000, MaxDurationSeconds: 3600, Timeout: 250 * time.Millisecond,
+		MaxBytes: 1000, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: 250 * time.Millisecond,
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Download error = %v, want context.DeadlineExceeded", err)
 	}
-	if _, err := os.Stat(partialPath); !os.IsNotExist(err) {
-		t.Fatalf("partial file still exists after timeout: stat error = %v", err)
-	}
+	assertNoStagingDirectories(t, filepath.Dir(outputTemplate))
 }
 
 func TestDownloadChecksActualOutputSizeAndReturnsMetadata(t *testing.T) {
@@ -102,7 +96,7 @@ func TestDownloadChecksActualOutputSizeAndReturnsMetadata(t *testing.T) {
 	outputPath := filepath.Join(filepath.Dir(outputTemplate), "abc123def45.webm")
 	d := newLimitsTestDownloader(t, "complete", `{"title":"title","duration":60,"filesize":2}`, outputTemplate, nil)
 	metadata, err := d.Download(context.Background(), "abc123def45", outputTemplate, DownloadLimits{
-		MaxBytes: 10, MaxDurationSeconds: 3600, Timeout: 3 * time.Second,
+		MaxBytes: 10, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: 3 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -120,7 +114,7 @@ func TestDownloadRemovesOutputWhenActualSizeIsTooLarge(t *testing.T) {
 	outputPath := filepath.Join(filepath.Dir(outputTemplate), "abc123def45.webm")
 	d := newLimitsTestDownloader(t, "complete", `{"title":"title","duration":60}`, outputTemplate, nil)
 	_, err := d.Download(context.Background(), "abc123def45", outputTemplate, DownloadLimits{
-		MaxBytes: 4, MaxDurationSeconds: 3600, Timeout: 3 * time.Second,
+		MaxBytes: 4, MaxRateBytesPerSecond: 5000000, MaxDurationSeconds: 3600, Timeout: 3 * time.Second,
 	})
 	if !errors.Is(err, ErrDownloadTooLarge) {
 		t.Fatalf("Download error = %v, want ErrDownloadTooLarge", err)
@@ -142,13 +136,37 @@ func newLimitsTestDownloader(t *testing.T, downloadMode, metadata, outputTemplat
 			if containsArgument(args, "--dump-single-json") {
 				mode = "metadata"
 			}
+			outputTemplate := argumentValue(args, "--output")
+			outputPath := strings.TrimSuffix(outputTemplate, outputExtensionTemplate) + "webm"
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestDownloaderLimitsHelperProcess$")
 			cmd.Env = append(os.Environ(), "YTDLP_LIMITS_HELPER=1", "YTDLP_LIMITS_MODE="+mode,
 				"YTDLP_LIMITS_METADATA="+metadata,
-				"YTDLP_LIMITS_PARTIAL="+filepath.Join(filepath.Dir(outputTemplate), "abc123def45.webm.part"),
-				"YTDLP_LIMITS_OUTPUT="+filepath.Join(filepath.Dir(outputTemplate), "abc123def45.webm"))
+				"YTDLP_LIMITS_PARTIAL="+outputPath+".part",
+				"YTDLP_LIMITS_OUTPUT="+outputPath)
 			return cmd
 		},
+	}
+}
+
+func argumentValue(args []string, name string) string {
+	for index, arg := range args {
+		if arg == name && index+1 < len(args) {
+			return args[index+1]
+		}
+	}
+	return ""
+}
+
+func assertNoStagingDirectories(t *testing.T, directory string) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), ".download-") {
+			t.Errorf("staging directory %q remains", entry.Name())
+		}
 	}
 }
 
