@@ -17,6 +17,6 @@ func sqliteDSN(path string) (string, error) {
 		uriPath = "/" + uriPath
 	}
 	// DSN flags are applied to every physical connection, including replacements.
-	uri := url.URL{Scheme: "file", Path: uriPath, RawQuery: "_foreign_keys=on&_busy_timeout=5000"}
+	uri := url.URL{Scheme: "file", Path: uriPath, RawQuery: "_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL&_synchronous=FULL"}
 	return uri.String(), nil
 }

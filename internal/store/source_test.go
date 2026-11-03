@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -61,5 +63,56 @@ func TestListSourcesFiltersAndPaginatesNewestFirst(t *testing.T) {
 	}
 	if _, err := s.ListSources(ctx, "invalid", 10, 0); err == nil {
 		t.Fatal("invalid status filter was accepted")
+	}
+}
+
+func TestConcurrentQueueWritesUseWalAndBusyTimeout(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	var journalMode string
+	if err := s.db.QueryRowContext(ctx, `PRAGMA journal_mode`).Scan(&journalMode); err != nil {
+		t.Fatal(err)
+	}
+	if journalMode != "wal" {
+		t.Fatalf("journal mode = %q, want wal", journalMode)
+	}
+	var busyTimeout int
+	if err := s.db.QueryRowContext(ctx, `PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
+		t.Fatal(err)
+	}
+	if busyTimeout != 5000 {
+		t.Fatalf("busy timeout = %d, want 5000 ms", busyTimeout)
+	}
+
+	const workers = 8
+	const writesPerWorker = 20
+	errCh := make(chan error, workers*writesPerWorker)
+	var wg sync.WaitGroup
+	for worker := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for write := range writesPerWorker {
+				id := fmt.Sprintf("%011d", worker*writesPerWorker+write+1)
+				_, err := s.CreateSource(ctx, id, "https://www.youtube.com/watch?v="+id)
+				if err != nil {
+					errCh <- err
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Errorf("concurrent source creation failed: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sources WHERE status = 'pending'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := count, workers*writesPerWorker; got != want {
+		t.Fatalf("stored sources = %d, want %d", got, want)
 	}
 }
