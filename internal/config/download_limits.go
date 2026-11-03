@@ -9,6 +9,7 @@ func loadDownloadLimits(c *Config) error {
 		func() error { return setEnvInt(&c.MaxRateBytesPerSecond, "MAX_RATE_BYTES_PER_SECOND", 5_000_000) },
 		func() error { return setEnvInt(&c.MaxAudioBytes, "MAX_AUDIO_BYTES", 500_000_000) },
 		func() error { return setEnvInt(&c.MaxVideoDurationSeconds, "MAX_VIDEO_DURATION_SECONDS", 14_400) },
+		func() error { return setEnvInt(&c.DownloadTimeoutSeconds, "DOWNLOAD_TIMEOUT_SECONDS", 14_400) },
 	} {
 		if err := setting(); err != nil {
 			return err

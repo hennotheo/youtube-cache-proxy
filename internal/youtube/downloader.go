@@ -2,9 +2,11 @@ package youtube
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
+	"time"
 )
 
 type commandContextFunc func(context.Context, string, ...string) *exec.Cmd
@@ -20,24 +22,95 @@ func NewDownloader() *Downloader {
 	return &Downloader{executable: "yt-dlp", commandContext: exec.CommandContext}
 }
 
-// Download runs yt-dlp for one video ID and writes to the supplied output template.
-func (d *Downloader) Download(ctx context.Context, videoID, outputTemplate string) error {
+// Download checks metadata and downloads one video within the supplied limits.
+func (d *Downloader) Download(ctx context.Context, videoID, outputTemplate string, limits DownloadLimits) (VideoMetadata, error) {
 	if ctx == nil {
-		return fmt.Errorf("download context is required")
+		return VideoMetadata{}, fmt.Errorf("download context is required")
 	}
-	args, err := buildDownloadArgs(videoID, outputTemplate)
+	if err := limits.validate(); err != nil {
+		return VideoMetadata{}, err
+	}
+	if err := validateOutputTemplate(outputTemplate, videoID); err != nil {
+		return VideoMetadata{}, err
+	}
+	operationCtx, cancel := context.WithTimeout(ctx, limits.Timeout)
+	defer cancel()
+
+	info, err := d.readMetadata(operationCtx, videoID)
+	if err != nil {
+		return VideoMetadata{}, err
+	}
+	metadata, err := videoMetadata(info)
+	if err != nil {
+		return VideoMetadata{}, errors.Join(err, cleanupPartialFiles(outputTemplate))
+	}
+	if metadata.DurationSeconds > limits.MaxDurationSeconds {
+		return VideoMetadata{}, errors.Join(ErrVideoTooLong, cleanupPartialFiles(outputTemplate))
+	}
+	if metadata.SizeBytes > limits.MaxBytes {
+		return VideoMetadata{}, errors.Join(ErrDownloadTooLarge, cleanupPartialFiles(outputTemplate))
+	}
+
+	if err := d.runDownload(operationCtx, videoID, outputTemplate, limits.MaxBytes); err != nil {
+		return VideoMetadata{}, err
+	}
+	metadata.SizeBytes, err = actualOutputSize(outputTemplate)
+	if err != nil {
+		return VideoMetadata{}, errors.Join(err, cleanupPartialFiles(outputTemplate))
+	}
+	if metadata.SizeBytes > limits.MaxBytes {
+		return VideoMetadata{}, errors.Join(ErrDownloadTooLarge, removeOutputFiles(outputTemplate))
+	}
+	return metadata, nil
+}
+
+func (d *Downloader) runDownload(ctx context.Context, videoID, outputTemplate string, maxBytes int64) error {
+	args, err := buildDownloadArgs(videoID, outputTemplate, maxBytes)
 	if err != nil {
 		return err
 	}
-	cmd := d.commandContext(ctx, d.executable, args...)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	cmd := d.commandContext(runCtx, d.executable, args...)
 	cmd.Stdin = nil
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return errors.Join(ctx.Err(), cleanupPartialFiles(outputTemplate))
 		}
-		return fmt.Errorf("run yt-dlp: %w", err)
+		return errors.Join(fmt.Errorf("start yt-dlp: %w", err), cleanupPartialFiles(outputTemplate))
 	}
-	return nil
+	finished := make(chan error, 1)
+	go func() { finished <- cmd.Wait() }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-finished:
+			if err != nil {
+				if ctx.Err() != nil {
+					return errors.Join(ctx.Err(), cleanupPartialFiles(outputTemplate))
+				}
+				return errors.Join(fmt.Errorf("run yt-dlp: %w", err), cleanupPartialFiles(outputTemplate))
+			}
+			return nil
+		case <-ticker.C:
+			size, err := partialOutputSize(outputTemplate)
+			if err != nil {
+				cancel()
+				<-finished
+				return errors.Join(fmt.Errorf("check yt-dlp partial file: %w", err), cleanupPartialFiles(outputTemplate))
+			}
+			if size > maxBytes {
+				cancel()
+				<-finished
+				return errors.Join(ErrDownloadTooLarge, cleanupPartialFiles(outputTemplate))
+			}
+		case <-ctx.Done():
+			cancel()
+			<-finished
+			return errors.Join(ctx.Err(), cleanupPartialFiles(outputTemplate))
+		}
+	}
 }
