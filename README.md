@@ -21,6 +21,8 @@ Le dépôt contient les fondations du backend :
 
 L'API exige un jeton Bearer : le rôle `producer` peut ajouter et consulter les sources et récupérer l'audio ; le rôle `admin` peut aussi démarrer des lots, relancer ou supprimer une source et contrôler le worker. `/health` reste public. L'endpoint audio utilise le service de fichiers Go, qui prend en charge les requêtes Range.
 
+La pause laisse la vidéo en cours se terminer, puis conserve le lot actif pour la reprise. Au redémarrage du service, un lot actif est marqué `interrupted` et ses sources inachevées redeviennent `pending` ; aucun téléchargement ne reprend sans nouveau lancement explicite.
+
 `POST /sources` lance une requête yt-dlp limitée aux métadonnées (30 secondes maximum), sans téléchargement audio. Si YouTube ou yt-dlp ne renvoie pas les détails, la source reste créée en `pending` et les champs indisponibles sont omis. Les métadonnées enrichies apparaissent également dans les réponses de liste et de détail.
 
 Configure `PRODUCER_TOKEN` et `ADMIN_TOKEN` avec deux valeurs différentes d'au moins 32 caractères. Les deux variables sont obligatoires au démarrage.
