@@ -48,6 +48,41 @@ func TestCreateSourceRejectsDuplicateVideoID(t *testing.T) {
 	}
 }
 
+func TestUpdateSourceMetadataPersistsOptionalVideoDetails(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	source, err := s.CreateSource(ctx, "abc123def45", "https://www.youtube.com/watch?v=abc123def45")
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewCount := int64(123456)
+	metadata := youtube.VideoMetadata{
+		Title: "Harbor live", DurationSeconds: 63, ChannelName: "Våyagere", ChannelID: "@Voyagere",
+		ChannelURL: "https://www.youtube.com/@Voyagere", ThumbnailURL: "https://i.ytimg.com/vi/abc123def45/hqdefault.jpg",
+		PublishedAt: "2024-05-09", Description: "Un concert à Montréal", Tags: []string{"city", "café"},
+		Categories: []string{"Music"}, ViewCount: &viewCount, Language: "fr", LiveStatus: "not_live",
+	}
+	if err := s.UpdateSourceMetadata(ctx, source.ID, metadata); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title.String != "Harbor live" || got.DurationSeconds.Int64 != 63 || got.ChannelName.String != "Våyagere" || got.ChannelID.String != "@Voyagere" {
+		t.Fatalf("basic details = %+v", got)
+	}
+	if got.ThumbnailURL.String != metadata.ThumbnailURL || got.PublishedAt.String != "2024-05-09" || got.Description.String != metadata.Description {
+		t.Fatalf("published details = %+v", got)
+	}
+	if got.TagsJSON.String != `["city","café"]` || got.CategoriesJSON.String != `["Music"]` || got.ViewCount.Int64 != viewCount || got.Language.String != "fr" || got.LiveStatus.String != "not_live" {
+		t.Fatalf("optional details = %+v", got)
+	}
+	if got.Status != "pending" || got.AudioPath.Valid {
+		t.Fatalf("metadata update changed download state: status=%q audioPath=%+v", got.Status, got.AudioPath)
+	}
+}
+
 func TestCreateSourceValidatesAndCanonicalizesVideoURL(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()

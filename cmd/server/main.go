@@ -28,7 +28,8 @@ func main() {
 		log.Fatal(err)
 	}
 	defer queue.Close()
-	batchWorker, err := worker.New(ctx, queue, youtube.NewDownloader(), worker.Options{
+	downloader := youtube.NewDownloader()
+	batchWorker, err := worker.New(ctx, queue, downloader, worker.Options{
 		AudioDir: settings.AudioDir,
 		Limits: youtube.DownloadLimits{
 			MaxBytes: int64(settings.MaxAudioBytes), MaxRateBytesPerSecond: int64(settings.MaxRateBytesPerSecond),
@@ -47,7 +48,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("HTTP server listening on %s", listener.Addr())
-	api := httpapi.NewAPI(queue, batchWorker, settings.ProducerToken, settings.AdminToken)
+	api := httpapi.NewAPI(queue, batchWorker, downloader, settings.ProducerToken, settings.AdminToken)
 	if err := server.Run(ctx, listener, httpapi.NewRouter(api)); err != nil {
 		log.Fatal(err)
 	}

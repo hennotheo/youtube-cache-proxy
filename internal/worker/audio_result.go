@@ -37,7 +37,7 @@ func audioResult(directory, videoID string, metadata youtube.VideoMetadata) (sto
 	}
 	return store.AudioResult{
 		Title: metadata.Title, DurationSeconds: metadata.DurationSeconds,
-		Path: audioPath, Mime: audioContentType(filepath.Ext(audioPath)), SizeBytes: info.Size(),
+		Path: audioPath, Mime: audioContentType(filepath.Ext(audioPath)), SizeBytes: info.Size(), Metadata: metadata,
 	}, nil
 }
 
