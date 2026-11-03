@@ -98,7 +98,7 @@ func TestCreateSourceSucceedsWhenMetadataLookupFails(t *testing.T) {
 	if response.Code != http.StatusCreated || !strings.Contains(response.Body.String(), `"status":"pending"`) {
 		t.Fatalf("metadata failure blocked source creation: status=%d body=%s", response.Code, response.Body.String())
 	}
-	sources, err := queue.ListSources(ctx, "pending", 10, 0)
+	sources, err := queue.ListSources(ctx, "pending", "", 10, 0)
 	if err != nil || len(sources) != 1 || sources[0].Title.Valid || sources[0].Status != "pending" {
 		t.Fatalf("source after metadata failure = %+v, err=%v", sources, err)
 	}

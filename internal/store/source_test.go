@@ -119,14 +119,14 @@ func TestListSourcesFiltersAndPaginatesNewestFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := s.ListSources(ctx, "pending", 1, 1)
+	page, err := s.ListSources(ctx, "pending", "", 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(page) != 1 || page[0].VideoID != "bbbbbbbbbbb" {
 		t.Fatalf("page = %+v, want middle source", page)
 	}
-	if _, err := s.ListSources(ctx, "invalid", 10, 0); err == nil {
+	if _, err := s.ListSources(ctx, "invalid", "", 10, 0); err == nil {
 		t.Fatal("invalid status filter was accepted")
 	}
 }
