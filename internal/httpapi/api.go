@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"net/http"
 
 	"github.com/hennotheo/youtube-cache-proxy/internal/store"
@@ -26,20 +27,26 @@ type BatchWorker interface {
 
 // API serves queue, audio, and worker operations over HTTP.
 type API struct {
-	repository Repository
-	worker     BatchWorker
+	repository        Repository
+	worker            BatchWorker
+	producerTokenHash [sha256.Size]byte
+	adminTokenHash    [sha256.Size]byte
 }
 
-// NewAPI constructs the REST API from its persistent store and worker.
-func NewAPI(repository Repository, worker BatchWorker) *API {
-	return &API{repository: repository, worker: worker}
+// NewAPI constructs the REST API with its persistent store, worker, and access tokens.
+func NewAPI(repository Repository, worker BatchWorker, producerToken, adminToken string) *API {
+	return &API{
+		repository: repository, worker: worker,
+		producerTokenHash: sha256.Sum256([]byte(producerToken)),
+		adminTokenHash:    sha256.Sum256([]byte(adminToken)),
+	}
 }
 
 func (a *API) register(mux *http.ServeMux) {
-	mux.HandleFunc("/sources", a.sources)
-	mux.HandleFunc("/sources/", a.source)
-	mux.HandleFunc("/downloads/run", a.runDownloads)
-	mux.HandleFunc("/worker/pause", a.pauseWorker)
-	mux.HandleFunc("/worker/resume", a.resumeWorker)
-	mux.HandleFunc("/worker/status", a.workerStatus)
+	mux.Handle("/sources", a.requireRole(producerRole, a.sources))
+	mux.Handle("/sources/", a.requireRoleFunc(a.sourceRole, a.source))
+	mux.Handle("/downloads/run", a.requireRole(adminRole, a.runDownloads))
+	mux.Handle("/worker/pause", a.requireRole(adminRole, a.pauseWorker))
+	mux.Handle("/worker/resume", a.requireRole(adminRole, a.resumeWorker))
+	mux.Handle("/worker/status", a.requireRole(adminRole, a.workerStatus))
 }

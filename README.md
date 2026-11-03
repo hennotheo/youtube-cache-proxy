@@ -16,25 +16,27 @@ Le dépôt contient les fondations du backend :
 - un moteur interne qui réserve un lot manuel, traite les téléchargements en arrière-plan, respecte le quota glissant sur 24 h et attend une pause aléatoire entre tentatives ;
 - une classification des erreurs `yt-dlp` pour distinguer les échecs réseau relançables des erreurs définitives.
 
-**L'API de base est maintenant utilisable, mais le projet reste en développement.** Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. L'authentification Bearer et les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable. Il n'y a pas encore d'interface utilisateur ni de configuration Docker Compose dans le dépôt.
+**L'API de base est maintenant utilisable, mais le projet reste en développement.** Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable. Il n'y a pas encore d'interface utilisateur ni de configuration Docker Compose dans le dépôt.
 
-L'API accepte temporairement les demandes sans authentification jusqu'à l'issue dédiée aux rôles Bearer. L'endpoint audio utilise le service de fichiers Go, qui prend en charge les requêtes Range.
+L'API exige un jeton Bearer : le rôle `producer` peut ajouter et consulter les sources et récupérer l'audio ; le rôle `admin` peut aussi démarrer des lots, relancer ou supprimer une source et contrôler le worker. `/health` reste public. L'endpoint audio utilise le service de fichiers Go, qui prend en charge les requêtes Range.
+
+Configure `PRODUCER_TOKEN` et `ADMIN_TOKEN` avec deux valeurs différentes d'au moins 32 caractères. Les deux variables sont obligatoires au démarrage.
 
 ## API REST actuelle
 
 | Méthode | Endpoint | Description |
 |---|---|---|
-| `POST` | `/sources` | Ajouter une URL YouTube (`{"url":"https://..."}`) |
-| `GET` | `/sources?status=pending&limit=50&offset=0` | Lister et filtrer les sources |
-| `GET` | `/sources/{id}` | Lire une demande |
-| `GET` | `/sources/{id}/audio` | Récupérer le fichier audio prêt, avec support Range natif |
-| `POST` | `/downloads/run` | Démarrer un lot asynchrone (`{"count":3}`) |
-| `POST` | `/sources/{id}/retry` | Remettre une demande échouée en attente |
-| `DELETE` | `/sources/{id}` | Supprimer une demande et son fichier audio |
-| `POST` | `/worker/pause` | Empêcher le démarrage de la prochaine vidéo |
-| `POST` | `/worker/resume` | Reprendre un lot actif |
-| `GET` | `/worker/status` | Lire les compteurs et l'état du worker |
-| `GET` | `/health` | Vérifier la réponse HTTP |
+| `POST` | `/sources` | Producer/Admin : ajouter une URL YouTube (`{"url":"https://..."}`) |
+| `GET` | `/sources?status=pending&limit=50&offset=0` | Producer/Admin : lister et filtrer les sources |
+| `GET` | `/sources/{id}` | Producer/Admin : lire une demande |
+| `GET` | `/sources/{id}/audio` | Producer/Admin : récupérer l'audio prêt, avec support Range natif |
+| `POST` | `/downloads/run` | Admin : démarrer un lot asynchrone (`{"count":3}`) |
+| `POST` | `/sources/{id}/retry` | Admin : remettre une demande échouée en attente |
+| `DELETE` | `/sources/{id}` | Admin : supprimer une demande et son fichier audio |
+| `POST` | `/worker/pause` | Admin : empêcher le démarrage de la prochaine vidéo |
+| `POST` | `/worker/resume` | Admin : reprendre un lot actif |
+| `GET` | `/worker/status` | Admin : lire les compteurs et l'état du worker |
+| `GET` | `/health` | Public : vérifier la réponse HTTP |
 
 ## Lancer le serveur
 
@@ -58,7 +60,7 @@ Réponse attendue :
 
 Le serveur lit sa configuration depuis l'environnement. Les valeurs par défaut incluent `HTTP_ADDR=127.0.0.1:8080`, `SQLITE_PATH=data/queue.db` et `AUDIO_DIR=data/audio`. Les autres paramètres et leurs contraintes sont définis dans `internal/config`.
 
-Le binaire `yt-dlp` doit être installé et disponible dans `PATH` pour utiliser le composant interne de téléchargement. Ce composant n'est pas encore accessible via une route HTTP.
+Le binaire `yt-dlp` doit être installé et disponible dans `PATH` pour traiter les lots démarrés via l'API.
 
 ## Vérifications
 
