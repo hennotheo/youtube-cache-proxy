@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -85,7 +86,8 @@ func (d *Downloader) runDownload(ctx context.Context, videoID, outputTemplate st
 	cmd := d.commandContext(runCtx, d.executable, args...)
 	cmd.Stdin = nil
 	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		if ctx.Err() != nil {
 			return errors.Join(ctx.Err(), cleanupPartialFiles(outputTemplate))
@@ -103,7 +105,8 @@ func (d *Downloader) runDownload(ctx context.Context, videoID, outputTemplate st
 				if ctx.Err() != nil {
 					return errors.Join(ctx.Err(), cleanupPartialFiles(outputTemplate))
 				}
-				return errors.Join(fmt.Errorf("run yt-dlp: %w", err), cleanupPartialFiles(outputTemplate))
+				classified := classifyYTDLPFailure(stderr.String(), err)
+				return errors.Join(fmt.Errorf("run yt-dlp: %w", classified), cleanupPartialFiles(outputTemplate))
 			}
 			return nil
 		case <-ticker.C:
