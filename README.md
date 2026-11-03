@@ -12,7 +12,7 @@ Le dépôt contient les fondations du backend :
 - un stockage SQLite avec migrations et opérations de file d'attente ;
 - une suppression atomique des sources, refusée tant qu'elles appartiennent à un lot actif ;
 - un composant interne d'extraction des métadonnées et de téléchargement audio via `yt-dlp`, avec limites de durée, taille, débit et délai d'exécution ;
-- un moteur interne qui réserve un lot manuel puis traite ses téléchargements en arrière-plan ;
+- un moteur interne qui réserve un lot manuel, traite les téléchargements en arrière-plan, respecte le quota glissant sur 24 h et attend une pause aléatoire entre tentatives ;
 - une classification des erreurs `yt-dlp` pour distinguer les échecs réseau relançables des erreurs définitives.
 
 **L'application n'est pas encore utilisable comme proxy audio complet.** À ce stade, seule la route de santé est exposée par HTTP : il n'y a pas encore d'API publique pour ajouter ou récupérer des sources, consulter la file ou lire les fichiers audio. Il n'y a pas non plus d'interface utilisateur ni de configuration Docker Compose dans le dépôt.
