@@ -21,6 +21,10 @@ func TestApplyMigrationsIsRepeatableAndPreservesData(t *testing.T) {
 	if err := ApplyMigrations(ctx, db); err != nil {
 		t.Fatal(err)
 	}
+	var initialMigrations int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&initialMigrations); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO sources (video_id, url, status, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)`, "abc123def45", "https://www.youtube.com/watch?v=abc123def45", "2026-11-03T00:00:00Z", "2026-11-03T00:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
@@ -37,8 +41,8 @@ func TestApplyMigrationsIsRepeatableAndPreservesData(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM worker_state`).Scan(&workerRows); err != nil {
 		t.Fatal(err)
 	}
-	if sources != 1 || migrations != 1 || workerRows != 1 {
-		t.Fatalf("after replay: sources=%d migrations=%d workerRows=%d, want 1 each", sources, migrations, workerRows)
+	if sources != 1 || migrations != initialMigrations || workerRows != 1 {
+		t.Fatalf("after replay: sources=%d migrations=%d workerRows=%d, want source and worker rows preserved and migration count unchanged from %d", sources, migrations, workerRows, initialMigrations)
 	}
 }
 
