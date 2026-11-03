@@ -32,7 +32,7 @@ Configure `PRODUCER_TOKEN` et `ADMIN_TOKEN` avec deux valeurs différentes d'au 
 | Méthode | Endpoint | Description |
 |---|---|---|
 | `POST` | `/sources` | Producer/Admin : ajouter une URL YouTube et récupérer ses métadonnées (`{"url":"https://..."}`) |
-| `GET` | `/sources?status=pending&limit=50&offset=0` | Producer/Admin : lister et filtrer les sources avec leurs métadonnées |
+| `GET` | `/sources?status=pending&video_id=abc123def45&limit=50&offset=0` | Producer/Admin : lister et filtrer les sources par statut et identifiant vidéo |
 | `GET` | `/sources/{id}` | Producer/Admin : lire une demande et ses métadonnées |
 | `GET` | `/sources/{id}/audio` | Producer/Admin : récupérer l'audio prêt, avec support Range natif |
 | `POST` | `/downloads/run` | Admin : démarrer un lot asynchrone (`{"count":3}`) |
