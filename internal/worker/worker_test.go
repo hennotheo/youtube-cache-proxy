@@ -32,7 +32,7 @@ func TestStartReservesBatchAndReturnsBeforeDownloadFinishes(t *testing.T) {
 
 	outputDir := filepath.Join(t.TempDir(), "audio")
 	blockedDownloader := &fakeDownloader{started: make(chan struct{}, 1), release: make(chan struct{})}
-	worker, err := New(ctx, queue, blockedDownloader, outputDir, testDownloadLimits())
+	worker, err := New(ctx, queue, blockedDownloader, testWorkerOptions(outputDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestBatchRecordsFailuresAndContinuesWithTheNextReservedSource(t *testing.T)
 
 	outputDir := filepath.Join(t.TempDir(), "audio")
 	d := &fakeDownloader{failureVideoID: failedSource.VideoID, failure: context.DeadlineExceeded}
-	worker, err := New(ctx, queue, d, outputDir, testDownloadLimits())
+	worker, err := New(ctx, queue, d, testWorkerOptions(outputDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +126,107 @@ func TestBatchRecordsFailuresAndContinuesWithTheNextReservedSource(t *testing.T)
 	}
 	if ready.Status != "ready" {
 		t.Fatalf("source after failed download status = %q, want ready", ready.Status)
+	}
+}
+
+func TestBatchWaitsForRandomPauseOnlyBetweenAttempts(t *testing.T) {
+	ctx := context.Background()
+	queue, err := store.Open(ctx, filepath.Join(t.TempDir(), "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	for _, id := range []string{"aaaaaaaaaaa", "bbbbbbbbbbb"} {
+		if _, err := queue.CreateSource(ctx, id, "https://www.youtube.com/watch?v="+id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outputDir := filepath.Join(t.TempDir(), "audio")
+	worker, err := New(ctx, queue, &fakeDownloader{}, testWorkerOptions(outputDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.options.PauseMin = 10 * time.Second
+	worker.options.PauseMax = 30 * time.Second
+	var waits []time.Duration
+	worker.wait = func(_ context.Context, duration time.Duration) error {
+		waits = append(waits, duration)
+		return nil
+	}
+	worker.pause = func(minimum, maximum time.Duration) time.Duration {
+		if minimum != 10*time.Second || maximum != 30*time.Second {
+			t.Fatalf("pause bounds = %s..%s, want 10s..30s", minimum, maximum)
+		}
+		return 17 * time.Second
+	}
+	if _, err := worker.Start(ctx, 2); err != nil {
+		t.Fatal(err)
+	}
+	worker.Wait()
+	if len(waits) != 1 || waits[0] != 17*time.Second {
+		t.Fatalf("waits = %v, want one 17-second pause between attempts", waits)
+	}
+}
+
+func TestRandomPauseReturnsWholeSecondsWithinConfiguredRange(t *testing.T) {
+	for range 100 {
+		pause := randomPause(10*time.Second, 30*time.Second)
+		if pause < 10*time.Second || pause > 30*time.Second || pause%time.Second != 0 {
+			t.Fatalf("random pause = %s, want a whole-second value between 10s and 30s", pause)
+		}
+	}
+}
+
+func TestBatchStopsBeforeAttemptThatWouldExceedDailyQuota(t *testing.T) {
+	ctx := context.Background()
+	queue, err := store.Open(ctx, filepath.Join(t.TempDir(), "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	first, err := queue.CreateSource(ctx, "aaaaaaaaaaa", "https://www.youtube.com/watch?v=aaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := queue.CreateSource(ctx, "bbbbbbbbbbb", "https://www.youtube.com/watch?v=bbbbbbbbbbb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputDir := filepath.Join(t.TempDir(), "audio")
+	options := testWorkerOptions(outputDir)
+	options.MaxAttemptsPer24Hours = 1
+	options.PauseMin = 10 * time.Second
+	options.PauseMax = 30 * time.Second
+	worker, err := New(ctx, queue, &fakeDownloader{}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waits := 0
+	worker.wait = func(_ context.Context, _ time.Duration) error {
+		waits++
+		return nil
+	}
+	worker.pause = func(_, _ time.Duration) time.Duration { return 17 * time.Second }
+	if _, err := worker.Start(ctx, 2); err != nil {
+		t.Fatal(err)
+	}
+	worker.Wait()
+	completed, err := queue.GetSource(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Status != "ready" {
+		t.Fatalf("first source status = %q, want ready", completed.Status)
+	}
+	untouched, err := queue.GetSource(ctx, second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if untouched.Status != "pending" || untouched.AttemptCount != 0 {
+		t.Fatalf("second source after quota = status %q attempts %d, want pending and no attempt", untouched.Status, untouched.AttemptCount)
+	}
+	if waits != 0 {
+		t.Fatalf("pause calls after quota reached = %d, want 0", waits)
 	}
 }
 
@@ -160,11 +261,15 @@ func (d *fakeDownloader) Download(ctx context.Context, videoID, outputTemplate s
 	return youtube.VideoMetadata{Title: videoID, DurationSeconds: 12, SizeBytes: 5}, nil
 }
 
-func testDownloadLimits() youtube.DownloadLimits {
-	return youtube.DownloadLimits{
-		MaxBytes:              1000,
-		MaxRateBytesPerSecond: 5000,
-		MaxDurationSeconds:    60,
-		Timeout:               time.Second,
+func testWorkerOptions(audioDir string) Options {
+	return Options{
+		AudioDir:              audioDir,
+		MaxAttemptsPer24Hours: 50,
+		Limits: youtube.DownloadLimits{
+			MaxBytes:              1000,
+			MaxRateBytesPerSecond: 5000,
+			MaxDurationSeconds:    60,
+			Timeout:               time.Second,
+		},
 	}
 }

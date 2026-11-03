@@ -13,4 +13,6 @@ var (
 	ErrNoPending = errors.New("no pending source")
 	// ErrPaused reports that the worker is paused.
 	ErrPaused = errors.New("worker paused")
+	// ErrQuotaExceeded reports that a new attempt would exceed the rolling daily limit.
+	ErrQuotaExceeded = errors.New("daily attempt quota exceeded")
 )

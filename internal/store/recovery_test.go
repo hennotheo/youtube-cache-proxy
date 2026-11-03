@@ -21,7 +21,7 @@ func TestOpenRecoversInterruptedRunWithoutStartingWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, attempt, err := s.StartNext(ctx, run.ID)
+	_, attempt, err := s.StartNext(ctx, run.ID, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
