@@ -3,8 +3,10 @@ package youtube
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"os/exec"
 )
 
 func (d *Downloader) readMetadata(ctx context.Context, videoID string) (ytDLPMetadata, error) {
@@ -19,7 +21,12 @@ func (d *Downloader) readMetadata(ctx context.Context, videoID string) (ytDLPMet
 		if ctx.Err() != nil {
 			return ytDLPMetadata{}, ctx.Err()
 		}
-		return ytDLPMetadata{}, fmt.Errorf("read yt-dlp metadata: %w", err)
+		var stderr string
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
+			stderr = string(exitError.Stderr)
+		}
+		return ytDLPMetadata{}, fmt.Errorf("read yt-dlp metadata: %w", classifyYTDLPFailure(stderr, err))
 	}
 
 	var metadata ytDLPMetadata
