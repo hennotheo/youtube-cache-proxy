@@ -27,7 +27,7 @@ func TestLoadUsesDownloadDefaults(t *testing.T) {
 	if config.Concurrency != 1 || config.PauseMinSeconds != 10 || config.PauseMaxSeconds != 30 || config.MaxAttemptsPer24Hours != 50 {
 		t.Fatal("unexpected worker defaults")
 	}
-	if config.MaxRateBytesPerSecond != 5_000_000 || config.MaxAudioBytes != 500_000_000 || config.MaxVideoDurationSeconds != 14_400 {
+	if config.MaxRateBytesPerSecond != 5_000_000 || config.MaxAudioBytes != 500_000_000 || config.MaxVideoDurationSeconds != 14_400 || config.DownloadTimeoutSeconds != 14_400 {
 		t.Fatal("unexpected media defaults")
 	}
 	if config.RetryLimit != 3 || config.RetryBaseSeconds != 30 || config.RetryMaxSeconds != 600 {
@@ -38,6 +38,14 @@ func TestLoadUsesDownloadDefaults(t *testing.T) {
 	}
 	if _, err := os.Stat(config.AudioDir); err != nil {
 		t.Fatalf("audio directory not prepared: %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidDownloadTimeout(t *testing.T) {
+	setValidEnvironment(t)
+	t.Setenv("DOWNLOAD_TIMEOUT_SECONDS", "0")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "DOWNLOAD_TIMEOUT_SECONDS") {
+		t.Fatalf("expected download timeout validation error, got %v", err)
 	}
 }
 

@@ -65,6 +65,7 @@ func (c Config) validateLimits() error {
 		validatePositive("MAX_RATE_BYTES_PER_SECOND", c.MaxRateBytesPerSecond),
 		validatePositive("MAX_AUDIO_BYTES", c.MaxAudioBytes),
 		validatePositive("MAX_VIDEO_DURATION_SECONDS", c.MaxVideoDurationSeconds),
+		validatePositive("DOWNLOAD_TIMEOUT_SECONDS", c.DownloadTimeoutSeconds),
 		validatePositive("RETRY_LIMIT", c.RetryLimit),
 		validatePositive("RETRY_BASE_SECONDS", c.RetryBaseSeconds),
 		validatePositive("RETRY_MAX_SECONDS", c.RetryMaxSeconds),

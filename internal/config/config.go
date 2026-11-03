@@ -15,6 +15,7 @@ type Config struct {
 	MaxRateBytesPerSecond   int
 	MaxAudioBytes           int
 	MaxVideoDurationSeconds int
+	DownloadTimeoutSeconds  int
 	RetryLimit              int
 	RetryBaseSeconds        int
 	RetryMaxSeconds         int
