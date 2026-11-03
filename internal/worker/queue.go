@@ -10,6 +10,10 @@ import (
 type Queue interface {
 	// ReserveRun atomically selects and reserves a manual batch.
 	ReserveRun(context.Context, int) (store.DownloadRun, error)
+	// GetActiveRun returns the current batch after a persisted pause.
+	GetActiveRun(context.Context) (store.DownloadRun, error)
+	// SetPaused persists whether another download may start.
+	SetPaused(context.Context, bool) error
 	// HasPendingRunSource reports whether the batch has another pending source.
 	HasPendingRunSource(context.Context, int64) (bool, error)
 	// HasAttemptCapacity reports whether the rolling quota permits another attempt.

@@ -6,11 +6,14 @@ import (
 	"net"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/hennotheo/youtube-cache-proxy/internal/config"
 	"github.com/hennotheo/youtube-cache-proxy/internal/httpapi"
 	"github.com/hennotheo/youtube-cache-proxy/internal/server"
 	"github.com/hennotheo/youtube-cache-proxy/internal/store"
+	"github.com/hennotheo/youtube-cache-proxy/internal/worker"
+	"github.com/hennotheo/youtube-cache-proxy/internal/youtube"
 )
 
 func main() {
@@ -25,13 +28,27 @@ func main() {
 		log.Fatal(err)
 	}
 	defer queue.Close()
+	batchWorker, err := worker.New(ctx, queue, youtube.NewDownloader(), worker.Options{
+		AudioDir: settings.AudioDir,
+		Limits: youtube.DownloadLimits{
+			MaxBytes: int64(settings.MaxAudioBytes), MaxRateBytesPerSecond: int64(settings.MaxRateBytesPerSecond),
+			MaxDurationSeconds: int64(settings.MaxVideoDurationSeconds), Timeout: time.Duration(settings.DownloadTimeoutSeconds) * time.Second,
+		},
+		MaxAttemptsPer24Hours: settings.MaxAttemptsPer24Hours,
+		PauseMin:              time.Duration(settings.PauseMinSeconds) * time.Second,
+		PauseMax:              time.Duration(settings.PauseMaxSeconds) * time.Second,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	listener, err := net.Listen("tcp", settings.HTTPAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("HTTP server listening on %s", listener.Addr())
-	if err := server.Run(ctx, listener, httpapi.NewRouter()); err != nil {
+	api := httpapi.NewAPI(queue, batchWorker)
+	if err := server.Run(ctx, listener, httpapi.NewRouter(api)); err != nil {
 		log.Fatal(err)
 	}
 }

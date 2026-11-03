@@ -21,6 +21,8 @@ type Worker struct {
 	downloader Downloader
 	options    Options
 	runs       sync.WaitGroup
+	stateMu    sync.Mutex
+	running    bool
 	wait       func(context.Context, time.Duration) error
 	pause      func(time.Duration, time.Duration) time.Duration
 }
@@ -56,13 +58,51 @@ func (w *Worker) Start(ctx context.Context, count int) (store.DownloadRun, error
 	if ctx == nil {
 		return store.DownloadRun{}, fmt.Errorf("request context is required")
 	}
+	w.stateMu.Lock()
+	if w.running {
+		w.stateMu.Unlock()
+		return store.DownloadRun{}, store.ErrConflict
+	}
+	w.stateMu.Unlock()
 	run, err := w.queue.ReserveRun(ctx, count)
 	if err != nil {
 		return store.DownloadRun{}, err
 	}
-	w.runs.Add(1)
-	go w.process(run)
+	w.launch(run)
 	return run, nil
+}
+
+// Pause prevents the next source in an active batch from starting.
+func (w *Worker) Pause(ctx context.Context) error {
+	return w.queue.SetPaused(ctx, true)
+}
+
+// Resume clears the persisted pause and restarts any active batch.
+func (w *Worker) Resume(ctx context.Context) error {
+	if err := w.queue.SetPaused(ctx, false); err != nil {
+		return err
+	}
+	run, err := w.queue.GetActiveRun(ctx)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	w.launch(run)
+	return nil
+}
+
+func (w *Worker) launch(run store.DownloadRun) {
+	w.stateMu.Lock()
+	if w.running {
+		w.stateMu.Unlock()
+		return
+	}
+	w.running = true
+	w.runs.Add(1)
+	w.stateMu.Unlock()
+	go w.process(run)
 }
 
 // Wait waits for all batches started by this worker to finish.
@@ -72,7 +112,12 @@ func (w *Worker) Wait() {
 
 // process claims and handles every source reserved for a run serially.
 func (w *Worker) process(run store.DownloadRun) {
-	defer w.runs.Done()
+	defer func() {
+		w.stateMu.Lock()
+		w.running = false
+		w.stateMu.Unlock()
+		w.runs.Done()
+	}()
 	failed, attempted := false, false
 	for {
 		if attempted {
