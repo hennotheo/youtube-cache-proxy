@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/hennotheo/youtube-cache-proxy/internal/youtube"
 )
 
 func openTestStore(t *testing.T) *Store {
@@ -43,6 +45,34 @@ func TestCreateSourceRejectsDuplicateVideoID(t *testing.T) {
 	}
 	if _, err := s.CreateSource(ctx, "abc123def45", "https://youtu.be/abc123def45"); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("duplicate error = %v, want ErrDuplicate", err)
+	}
+}
+
+func TestCreateSourceValidatesAndCanonicalizesVideoURL(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	source, err := s.CreateSource(ctx, "abc123def45", "https://youtu.be/abc123def45?si=tracking")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "https://www.youtube.com/watch?v=abc123def45"; source.URL != want {
+		t.Fatalf("stored URL = %q, want %q", source.URL, want)
+	}
+
+	if _, err := s.CreateSource(ctx, "abc123def45", "https://www.youtube.com/watch?v=abc123def45&list=PL123"); !errors.Is(err, youtube.ErrInvalidVideoURL) {
+		t.Fatalf("playlist URL error = %v, want ErrInvalidVideoURL", err)
+	}
+	if _, err := s.CreateSource(ctx, "differentID1", "https://www.youtube.com/watch?v=abc123def45"); !errors.Is(err, youtube.ErrInvalidVideoURL) {
+		t.Fatalf("mismatched video ID error = %v, want ErrInvalidVideoURL", err)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sources`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("stored source count = %d, want 1 after rejected URLs", count)
 	}
 }
 
