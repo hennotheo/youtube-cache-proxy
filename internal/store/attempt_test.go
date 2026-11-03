@@ -17,7 +17,7 @@ func TestCompleteAttemptMakesSourceReadyAndRecordsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, attempt, err := s.StartNext(ctx, run.ID)
+	_, attempt, err := s.StartNext(ctx, run.ID, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,14 +51,14 @@ func TestFailedAttemptCanRetryWithinRunOrBeRetriedManually(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, first, err := s.StartNext(ctx, run.ID)
+	_, first, err := s.StartNext(ctx, run.ID, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.FailAttempt(ctx, first.ID, "temporary", "network timeout", true); err != nil {
 		t.Fatal(err)
 	}
-	_, second, err := s.StartNext(ctx, run.ID)
+	_, second, err := s.StartNext(ctx, run.ID, 50)
 	if err != nil || second.AttemptNumber != 2 {
 		t.Fatalf("second attempt number=%d error=%v", second.AttemptNumber, err)
 	}

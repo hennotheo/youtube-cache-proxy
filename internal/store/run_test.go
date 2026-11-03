@@ -25,14 +25,14 @@ func TestRunReservesOldestPendingSourcesAndRejectsSecondActiveRun(t *testing.T) 
 	if _, err := s.ReserveRun(ctx, 1); !errors.Is(err, ErrConflict) {
 		t.Fatalf("second run error = %v, want ErrConflict", err)
 	}
-	first, attempt, err := s.StartNext(ctx, run.ID)
+	first, attempt, err := s.StartNext(ctx, run.ID, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.VideoID != "aaaaaaaaaaa" || first.Status != "downloading" || first.AttemptCount != 1 || attempt.SourceID != first.ID {
 		t.Fatalf("unexpected first claim: video=%q status=%q count=%d attemptSource=%d", first.VideoID, first.Status, first.AttemptCount, attempt.SourceID)
 	}
-	if _, _, err := s.StartNext(ctx, run.ID); !errors.Is(err, ErrConflict) {
+	if _, _, err := s.StartNext(ctx, run.ID, 50); !errors.Is(err, ErrConflict) {
 		t.Fatalf("parallel start error = %v, want ErrConflict", err)
 	}
 }
@@ -100,7 +100,7 @@ func TestPauseBlocksNextAttemptWithoutChangingCurrentSource(t *testing.T) {
 	if err := s.SetPaused(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.StartNext(ctx, run.ID); !errors.Is(err, ErrPaused) {
+	if _, _, err := s.StartNext(ctx, run.ID, 50); !errors.Is(err, ErrPaused) {
 		t.Fatalf("paused start error = %v, want ErrPaused", err)
 	}
 	unchanged, err := s.GetSource(ctx, source.ID)
@@ -110,7 +110,7 @@ func TestPauseBlocksNextAttemptWithoutChangingCurrentSource(t *testing.T) {
 	if err := s.SetPaused(ctx, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.StartNext(ctx, run.ID); err != nil {
+	if _, _, err := s.StartNext(ctx, run.ID, 50); err != nil {
 		t.Fatal(err)
 	}
 }

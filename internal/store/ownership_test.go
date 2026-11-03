@@ -23,7 +23,7 @@ func TestSecondStoreCannotInterruptActiveOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := owner.StartNext(ctx, run.ID); err != nil {
+	if _, _, err := owner.StartNext(ctx, run.ID, 50); err != nil {
 		t.Fatal(err)
 	}
 	second, err := Open(ctx, path)
