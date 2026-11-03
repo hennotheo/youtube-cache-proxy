@@ -19,11 +19,14 @@ func (s *Store) StartNext(ctx context.Context, runID int64) (Source, DownloadAtt
 	if err != nil {
 		return Source{}, DownloadAttempt{}, err
 	}
+	source, err := scanSource(tx.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM sources WHERE id = ?`, attempt.SourceID))
+	if err != nil {
+		return Source{}, DownloadAttempt{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Source{}, DownloadAttempt{}, err
 	}
-	source, err := s.GetSource(ctx, attempt.SourceID)
-	return source, attempt, err
+	return source, attempt, nil
 }
 
 func checkCanStart(ctx context.Context, tx *sql.Tx, runID int64) error {

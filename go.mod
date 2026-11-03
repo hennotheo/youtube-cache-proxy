@@ -2,7 +2,10 @@ module github.com/hennotheo/youtube-cache-proxy
 
 go 1.27.0
 
-require modernc.org/sqlite v1.61.1
+require (
+	github.com/gofrs/flock v0.13.1
+	modernc.org/sqlite v1.61.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect

@@ -3,11 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 func insertRun(ctx context.Context, tx *sql.Tx, count int, ids []int64, videos []string) (DownloadRun, error) {
@@ -18,8 +14,7 @@ func insertRun(ctx context.Context, tx *sql.Tx, count int, ids []int64, videos [
 		RETURNING id, requested_count, reserved_count, status, created_at`, count, len(ids)).
 		Scan(&run.ID, &run.RequestedCount, &run.ReservedCount, &run.Status, &run.CreatedAt)
 	if err != nil {
-		var sqliteErr *sqlite.Error
-		if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		if isUniqueConstraint(err) {
 			return DownloadRun{}, ErrConflict
 		}
 		return DownloadRun{}, fmt.Errorf("insert run: %w", err)
