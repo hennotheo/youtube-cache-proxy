@@ -7,15 +7,20 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/hennotheo/youtube-cache-proxy/internal/config"
 	"github.com/hennotheo/youtube-cache-proxy/internal/httpapi"
 	"github.com/hennotheo/youtube-cache-proxy/internal/server"
 )
 
 func main() {
+	settings, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:8080")
+	listener, err := net.Listen("tcp", settings.HTTPAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
