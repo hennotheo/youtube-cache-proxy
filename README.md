@@ -17,7 +17,7 @@ Le dépôt contient les fondations du backend :
 - un moteur interne qui réserve un lot manuel, traite les téléchargements en arrière-plan, respecte le quota glissant sur 24 h et attend une pause aléatoire entre tentatives ;
 - une classification des erreurs `yt-dlp` pour distinguer les échecs réseau relançables des erreurs définitives.
 
-**L'API de base est maintenant utilisable, mais le projet reste en développement.** Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable. Il n'y a pas encore d'interface utilisateur dans le dépôt.
+**L'API de base et un tableau de bord sont disponibles, mais le projet reste en développement.** Le tableau de bord est accessible à `/` et `/dashboard` ; il permet d'ajouter une vidéo, démarrer un lot, relancer ou supprimer une demande, et mettre le worker en pause ou le reprendre. Il demande un jeton administrateur, conservé en mémoire dans la page. Son actualisation automatique s'interrompt lorsque l'onglet est masqué. Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable.
 
 Une image Docker multi-architecture `linux/amd64` et `linux/arm64` est disponible via le Dockerfile. Elle inclut Go 1.27.3 au build, Python 3.13.18, yt-dlp 2026.10.26, yt-dlp-ejs 0.8.0, Deno 2.9.8 et FFmpeg 5.1.9. Le service s'exécute sans privilèges root et utilise `/data` pour la base SQLite et les fichiers audio. La configuration Compose fournit un volume persistant et un healthcheck.
 
@@ -102,6 +102,8 @@ docker compose up -d --build
 docker compose ps
 curl --fail http://127.0.0.1:8081/health
 ```
+
+Ouvrir `http://127.0.0.1:8081/` dans un navigateur pour utiliser le tableau de bord. Saisir le jeton `ADMIN_TOKEN` pour afficher la file et piloter le worker. Le jeton n'est pas enregistré par le navigateur et doit être saisi à nouveau après rechargement de la page.
 
 Le port est publié uniquement sur `127.0.0.1:8081` de l'hôte par défaut, pour laisser le port 8080 disponible aux autres projets. Pour choisir un autre port libre, modifier `HOST_PORT=8081` dans `.env`, puis exécuter `docker compose up -d` et utiliser ce port dans les URL. Le port interne reste `8080`. Le healthcheck interroge `/health` toutes les 30 secondes depuis le conteneur, sans outil supplémentaire. `restart: unless-stopped` relance le service après une sortie du processus ou un redémarrage Docker ; un état `unhealthy` seul ne déclenche pas de redémarrage.
 
