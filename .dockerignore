@@ -1,0 +1,7 @@
+.git
+.codex
+.superpowers
+data
+*.db
+*.db-shm
+*.db-wal
