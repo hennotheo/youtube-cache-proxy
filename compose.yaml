@@ -1,0 +1,28 @@
+services:
+  youtube-cache-proxy:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      HTTP_ADDR: "0.0.0.0:8080"
+      SQLITE_PATH: /data/queue.db
+      AUDIO_DIR: /data/audio
+      PRODUCER_TOKEN: ${PRODUCER_TOKEN:?Set PRODUCER_TOKEN in .env}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+    volumes:
+      - cache-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; r = urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3); assert r.status == 200 and json.load(r).get('status') == 'ok'"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  cache-data:
