@@ -16,6 +16,7 @@ import (
 
 const producerTestToken = "producer-token-for-httpapi-tests-123456"
 const adminTestToken = "admin-token-for-httpapi-tests-1234567890"
+const sessionTestSecret = "session-secret-for-httpapi-tests-1234567890"
 
 func TestCreateSourceReturnsAndPersistsMetadataWithoutStartingDownload(t *testing.T) {
 	ctx := context.Background()
@@ -40,7 +41,7 @@ func TestCreateSourceReturnsAndPersistsMetadataWithoutStartingDownload(t *testin
 		}
 		return metadata, nil
 	})
-	api := NewAPI(queue, nil, provider, producerTestToken, adminTestToken)
+	api := NewAPI(queue, nil, provider, producerTestToken, adminTestToken, sessionTestSecret)
 	request := httptest.NewRequest(http.MethodPost, "/sources", strings.NewReader(`{"url":"https://youtu.be/abc123def45"}`))
 	request.Header.Set("Authorization", "Bearer "+producerTestToken)
 	response := httptest.NewRecorder()
@@ -90,7 +91,7 @@ func TestCreateSourceSucceedsWhenMetadataLookupFails(t *testing.T) {
 	provider := metadataProviderFunc(func(context.Context, string) (youtube.VideoMetadata, error) {
 		return youtube.VideoMetadata{}, errors.New("metadata unavailable")
 	})
-	api := NewAPI(queue, nil, provider, producerTestToken, adminTestToken)
+	api := NewAPI(queue, nil, provider, producerTestToken, adminTestToken, sessionTestSecret)
 	request := httptest.NewRequest(http.MethodPost, "/sources", strings.NewReader(`{"url":"https://youtu.be/abc123def45"}`))
 	request.Header.Set("Authorization", "Bearer "+producerTestToken)
 	response := httptest.NewRecorder()
@@ -109,3 +110,4 @@ type metadataProviderFunc func(context.Context, string) (youtube.VideoMetadata, 
 func (f metadataProviderFunc) FetchMetadata(ctx context.Context, videoID string) (youtube.VideoMetadata, error) {
 	return f(ctx, videoID)
 }
+

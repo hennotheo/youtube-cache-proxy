@@ -22,19 +22,19 @@
 <body>
   <header><div><h1>YouTube Cache Proxy</h1><p class="muted">Gestion des vidéos et du worker</p></div><div class="toolbar"><button id="pause" class="secondary">Pause</button><button id="refresh" class="secondary">Actualiser</button></div></header>
   <main>
-    <section class="panel" aria-label="Connexion"><label for="token">Jeton administrateur</label><div class="toolbar"><input id="token" type="password" autocomplete="off" placeholder="Bearer token"><button id="connect">Connecter</button><button id="disconnect" class="secondary">Effacer</button></div><span id="message" role="status" aria-live="polite"></span></section>
+    <section class="panel" aria-label="Connexion"><form id="login"><label for="token">Jeton administrateur</label><div class="toolbar"><input id="token" type="password" autocomplete="off" placeholder="Jeton administrateur" required><button>Se connecter</button></div></form><button id="logout" class="secondary">Déconnexion</button><span id="message" role="status" aria-live="polite"></span></section>
     <section class="panel"><h2>Ajouter une vidéo</h2><form id="add"><input name="url" type="url" required placeholder="https://www.youtube.com/watch?v=…"><button>Ajouter</button></form></section>
     <section class="panel"><div><h2>File d’attente</h2><p id="summary" class="muted">Connectez-vous pour afficher les vidéos.</p></div><form id="run"><label for="count">Lancer</label><input id="count" name="count" type="number" min="1" max="100" value="3"><span>vidéos en attente</span><button>Démarrer</button></form></section>
     <div id="items"></div>
   </main>
 <script>
 (() => {
-  let token = "";
+  let authenticated = false;
   let timer = 0;
   const el = (id) => document.getElementById(id);
   const say = (message) => { el("message").textContent = message; };
   async function request(path, options = {}) {
-    const response = await fetch(path, { ...options, headers: { Authorization: `Bearer ${token}`, ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers } });
+    const response = await fetch(path, { credentials: "same-origin", ...options, headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers } });
     if (!response.ok) throw new Error((await response.text()).trim() || `Erreur HTTP ${response.status}`);
     return response.status === 204 ? null : response.json();
   }
@@ -58,33 +58,46 @@
   function action(label, className, callback) { const button = document.createElement("button"); button.textContent = label; button.className = className; button.addEventListener("click", callback); return button; }
   async function downloadAudio(path, name) {
     try {
-      const response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(path, { credentials: "same-origin" });
       if (!response.ok) throw new Error((await response.text()).trim() || `Erreur HTTP ${response.status}`);
       const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a");
       link.href = url; link.download = `${name}.mp3`; link.click(); URL.revokeObjectURL(url);
     } catch (error) { say(error.message); }
   }
   async function refresh() {
-    if (!token || document.hidden) return;
+    if (document.hidden) return;
     try {
       const [queue, worker] = await Promise.all([request("/sources?limit=100"), request("/worker/status")]);
+      authenticated = true;
       renderItems(queue.items);
       el("summary").textContent = `${worker.pending} en attente · ${worker.downloading} en cours · ${worker.ready} terminée(s) · ${worker.failed} en échec · ${worker.successful_downloads_24h} réussite(s) sur 24 h${worker.active_run ? ` · lot #${worker.active_run.id} ${worker.active_run.status}` : ""}`;
       el("pause").textContent = worker.paused ? "Reprendre" : "Pause";
       el("pause").dataset.paused = String(worker.paused);
       say("Connecté");
-    } catch (error) { say(error.message); }
+    } catch (error) { authenticated = false; say(error.message); }
   }
-  function schedule() { clearTimeout(timer); if (token && !document.hidden) timer = setTimeout(async () => { await refresh(); schedule(); }, 4000); }
+  function schedule() { clearTimeout(timer); if (authenticated && !document.hidden) timer = setTimeout(async () => { await refresh(); schedule(); }, 4000); }
   async function mutate(path, method, body) { try { await request(path, { method, body: body ? JSON.stringify(body) : undefined }); say("Commande effectuée"); await refresh(); } catch (error) { say(error.message); } }
   async function removeItem(id) { if (window.confirm("Supprimer cette vidéo et son fichier audio ?")) await mutate(`/sources/${id}`, "DELETE"); }
-  el("connect").addEventListener("click", async () => { token = el("token").value.trim(); if (!token) { say("Saisissez le jeton administrateur."); return; } await refresh(); schedule(); });
-  el("disconnect").addEventListener("click", () => { token = ""; el("token").value = ""; clearTimeout(timer); el("items").replaceChildren(); el("summary").textContent = "Connectez-vous pour afficher les vidéos."; say("Jeton effacé"); });
+  el("login").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = el("token");
+    try {
+      await request("/session/login", { method: "POST", body: JSON.stringify({ token: input.value }) });
+      input.value = ""; say("Connexion établie"); await refresh(); schedule();
+    } catch (error) { input.value = ""; say(error.message); }
+  });
+  el("logout").addEventListener("click", async () => {
+    try { await request("/session/logout", { method: "POST" }); } catch (error) { say(error.message); }
+    authenticated = false; clearTimeout(timer); el("items").replaceChildren();
+    el("summary").textContent = "Connectez-vous pour afficher les vidéos."; say("Session terminée");
+  });
   el("refresh").addEventListener("click", refresh);
   el("pause").addEventListener("click", () => mutate(el("pause").dataset.paused === "true" ? "/worker/resume" : "/worker/pause", "POST"));
   el("run").addEventListener("submit", (event) => { event.preventDefault(); mutate("/downloads/run", "POST", { count: Number(el("count").value) }); });
   el("add").addEventListener("submit", async (event) => { event.preventDefault(); const url = new FormData(event.currentTarget).get("url"); try { await request("/sources", { method: "POST", body: JSON.stringify({ url }) }); event.currentTarget.reset(); say("Vidéo ajoutée"); await refresh(); } catch (error) { say(error.message); } });
   document.addEventListener("visibilitychange", () => { if (document.hidden) clearTimeout(timer); else { refresh(); schedule(); } });
+  refresh().then(schedule);
 })();
 </script>
 </body>

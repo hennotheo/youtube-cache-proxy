@@ -33,6 +33,9 @@ func (a *API) requireRoleFunc(role func(*http.Request) accessRole, next http.Han
 }
 
 func (a *API) authorized(w http.ResponseWriter, r *http.Request, required accessRole) bool {
+	if r.Header.Get("Authorization") == "" && a.hasAdminSession(r) {
+		return true
+	}
 	token, ok := bearerToken(r.Header.Get("Authorization"))
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "bearer token required")
@@ -71,3 +74,4 @@ func (a *API) sourceRole(r *http.Request) accessRole {
 	}
 	return adminRole
 }
+
