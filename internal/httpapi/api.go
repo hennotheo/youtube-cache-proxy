@@ -61,7 +61,8 @@ func (a *API) isAdminToken(token string) bool {
 
 func (a *API) register(mux *http.ServeMux) {
 	mux.HandleFunc("/session/login", a.loginSession)
-	mux.HandleFunc("/session/logout", a.logoutSession)
+	mux.Handle("/session/csrf", a.requireRole(adminRole, a.csrfToken))
+	mux.Handle("/session/logout", a.requireRole(adminRole, a.logoutSession))
 	mux.Handle("/sources", a.requireRole(producerRole, a.sources))
 	mux.Handle("/sources/", a.requireRoleFunc(a.sourceRole, a.source))
 	mux.Handle("/downloads/run", a.requireRole(adminRole, a.runDownloads))
