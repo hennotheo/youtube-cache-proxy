@@ -30,11 +30,15 @@
 <script>
 (() => {
   let authenticated = false;
+  let csrfToken = "";
   let timer = 0;
   const el = (id) => document.getElementById(id);
   const say = (message) => { el("message").textContent = message; };
   async function request(path, options = {}) {
-    const response = await fetch(path, { credentials: "same-origin", ...options, headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers } });
+    const method = (options.method || "GET").toUpperCase();
+    const headers = { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers };
+    if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-Token"] = csrfToken;
+    const response = await fetch(path, { credentials: "same-origin", ...options, headers });
     if (!response.ok) throw new Error((await response.text()).trim() || `Erreur HTTP ${response.status}`);
     return response.status === 204 ? null : response.json();
   }
@@ -67,6 +71,8 @@
   async function refresh() {
     if (document.hidden) return;
     try {
+      const session = await request("/session/csrf");
+      csrfToken = session.token;
       const [queue, worker] = await Promise.all([request("/sources?limit=100"), request("/worker/status")]);
       authenticated = true;
       renderItems(queue.items);
@@ -74,7 +80,7 @@
       el("pause").textContent = worker.paused ? "Reprendre" : "Pause";
       el("pause").dataset.paused = String(worker.paused);
       say("Connecté");
-    } catch (error) { authenticated = false; say(error.message); }
+    } catch (error) { authenticated = false; csrfToken = ""; say(error.message); }
   }
   function schedule() { clearTimeout(timer); if (authenticated && !document.hidden) timer = setTimeout(async () => { await refresh(); schedule(); }, 4000); }
   async function mutate(path, method, body) { try { await request(path, { method, body: body ? JSON.stringify(body) : undefined }); say("Commande effectuée"); await refresh(); } catch (error) { say(error.message); } }
@@ -89,7 +95,7 @@
   });
   el("logout").addEventListener("click", async () => {
     try { await request("/session/logout", { method: "POST" }); } catch (error) { say(error.message); }
-    authenticated = false; clearTimeout(timer); el("items").replaceChildren();
+    authenticated = false; csrfToken = ""; clearTimeout(timer); el("items").replaceChildren();
     el("summary").textContent = "Connectez-vous pour afficher les vidéos."; say("Session terminée");
   });
   el("refresh").addEventListener("click", refresh);
