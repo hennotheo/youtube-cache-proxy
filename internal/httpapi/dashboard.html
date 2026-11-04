@@ -34,12 +34,19 @@
   let timer = 0;
   const el = (id) => document.getElementById(id);
   const say = (message) => { el("message").textContent = message; };
+  async function errorMessage(response) {
+    try {
+      const payload = await response.json();
+      if (payload && typeof payload.message === "string") return payload.message;
+    } catch {}
+    return `Erreur HTTP ${response.status}`;
+  }
   async function request(path, options = {}) {
     const method = (options.method || "GET").toUpperCase();
     const headers = { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers };
     if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-Token"] = csrfToken;
     const response = await fetch(path, { credentials: "same-origin", ...options, headers });
-    if (!response.ok) throw new Error((await response.text()).trim() || `Erreur HTTP ${response.status}`);
+    if (!response.ok) throw new Error(await errorMessage(response));
     return response.status === 204 ? null : response.json();
   }
   function renderItems(items) {
@@ -63,7 +70,7 @@
   async function downloadAudio(path, name) {
     try {
       const response = await fetch(path, { credentials: "same-origin" });
-      if (!response.ok) throw new Error((await response.text()).trim() || `Erreur HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await errorMessage(response));
       const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a");
       link.href = url; link.download = `${name}.mp3`; link.click(); URL.revokeObjectURL(url);
     } catch (error) { say(error.message); }
