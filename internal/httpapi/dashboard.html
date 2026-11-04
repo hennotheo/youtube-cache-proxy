@@ -15,8 +15,11 @@
     button.secondary { background: #52616b; } button.danger { background: #a83232; } button:disabled { opacity: .55; cursor: wait; }
     #message { min-height: 1.5em; } #items { display: grid; gap: .65rem; } .source { display: grid; grid-template-columns: 110px 1fr auto; gap: 1rem; align-items: center; }
     .source img { width: 110px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: .35rem; background: #e5eaee; }
-    .source h3 { margin: 0; } .muted { color: #586873; font-size: .9rem; } .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
-    @media (max-width: 650px) { .source { grid-template-columns: 80px 1fr; } .source img { width: 80px; } .actions { grid-column: 1 / -1; } }
+    .source > div { min-width: 0; } .source h3 { margin: 0; overflow-wrap: anywhere; } .muted { color: #586873; font-size: .9rem; }
+    .metadata { display: flex; flex-wrap: wrap; gap: .25rem .75rem; } .metadata p { margin: .4rem 0; }
+    .description summary { cursor: pointer; color: #176b87; } .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .pagination { justify-content: center; } .pagination span { min-width: 5rem; text-align: center; }
+    @media (max-width: 650px) { .source { grid-template-columns: 80px minmax(0, 1fr); } .source img { width: 80px; } .actions { grid-column: 1 / -1; } }
   </style>
 </head>
 <body>
@@ -26,12 +29,16 @@
     <section class="panel"><h2>Ajouter une vidéo</h2><form id="add"><input name="url" type="url" required placeholder="https://www.youtube.com/watch?v=…"><button>Ajouter</button></form></section>
     <section class="panel"><div><h2>File d’attente</h2><p id="summary" class="muted">Connectez-vous pour afficher les vidéos.</p></div><form id="run"><label for="count">Lancer</label><input id="count" name="count" type="number" min="1" max="100" value="3"><span>vidéos en attente</span><button>Démarrer</button></form></section>
     <div id="items"></div>
+    <nav id="pagination" class="toolbar pagination" aria-label="Pagination des sources"><button id="previous" class="secondary">Précédent</button><span id="page" class="muted">Page 1</span><button id="next" class="secondary">Suivant</button></nav>
   </main>
 <script>
 (() => {
   let authenticated = false;
   let csrfToken = "";
   let timer = 0;
+  const pageSize = 20;
+  let offset = 0;
+  let hasNextPage = false;
   const el = (id) => document.getElementById(id);
   const say = (message) => { el("message").textContent = message; };
   async function errorMessage(response) {
@@ -51,20 +58,63 @@
   }
   function renderItems(items) {
     const root = el("items"); root.replaceChildren();
-    for (const item of items) {
-      const card = document.createElement("article"); card.className = "source";
-      const image = document.createElement("img"); image.alt = ""; if (item.thumbnail_url) image.src = item.thumbnail_url;
-      const details = document.createElement("div");
-      const title = document.createElement("h3"); title.textContent = item.title || item.video_id;
-      const info = document.createElement("p"); info.className = "muted"; info.textContent = `${item.channel_name || "Chaîne inconnue"} · ${item.status} · ${item.attempt_count} tentative(s)`;
-      details.append(title, info);
-      if (item.error_message) { const error = document.createElement("p"); error.className = "muted"; error.textContent = item.error_message; details.append(error); }
-      const actions = document.createElement("div"); actions.className = "actions";
-      if (item.status === "failed") actions.append(action("Relancer", "secondary", () => mutate(`/sources/${item.id}/retry`, "POST")));
-      if (item.status === "ready" && item.audio_url) { const link = document.createElement("button"); link.textContent = "Télécharger"; link.className = "secondary"; link.addEventListener("click", () => downloadAudio(item.audio_url, item.title || item.video_id)); actions.append(link); }
-      actions.append(action("Supprimer", "danger", () => removeItem(item.id)));
-      card.append(image, details, actions); root.append(card);
+    for (const item of items) root.append(createSourceCard(item));
+  }
+  function createSourceCard(item) {
+    const card = document.createElement("article"); card.className = "source";
+    const image = document.createElement("img"); image.alt = item.title || ""; if (item.thumbnail_url) image.src = item.thumbnail_url;
+    const details = document.createElement("div");
+    const title = document.createElement("h3");
+    if (item.url) {
+      const link = document.createElement("a"); link.href = item.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+      link.textContent = item.title || item.video_id; title.append(link);
+    } else title.textContent = item.title || item.video_id;
+    details.append(title);
+    const info = document.createElement("p"); info.className = "muted";
+    info.textContent = [item.channel_name || "Chaîne inconnue", item.status, item.attempt_count + " tentative(s)"].join(" · ");
+    details.append(info);
+    const metadata = [];
+    if (item.published_at) metadata.push("Publié " + item.published_at);
+    if (item.duration_seconds != null) metadata.push("Durée " + formatDuration(item.duration_seconds));
+    if (item.view_count != null) metadata.push(formatNumber(item.view_count) + " vues");
+    if (item.language) metadata.push("Langue " + item.language);
+    if (item.live_status) metadata.push("Direct " + item.live_status);
+    if (metadata.length) {
+      const metadataRow = document.createElement("div"); metadataRow.className = "metadata muted";
+      const text = document.createElement("p"); text.textContent = metadata.join(" · "); metadataRow.append(text); details.append(metadataRow);
     }
+    if (item.description) {
+      const disclosure = document.createElement("details"); disclosure.className = "description";
+      const summary = document.createElement("summary"); summary.textContent = "Description";
+      const description = document.createElement("p"); description.className = "muted"; description.textContent = item.description;
+      disclosure.append(summary, description); details.append(disclosure);
+    }
+    if (item.tags && item.tags.length) {
+      const tags = document.createElement("p"); tags.className = "muted"; tags.textContent = "Tags : " + item.tags.join(", "); details.append(tags);
+    }
+    if (item.categories && item.categories.length) {
+      const categories = document.createElement("p"); categories.className = "muted"; categories.textContent = "Catégories : " + item.categories.join(", "); details.append(categories);
+    }
+    if (item.error_message) {
+      const error = document.createElement("p"); error.className = "muted"; error.textContent = item.error_message; details.append(error);
+    }
+    const actions = document.createElement("div"); actions.className = "actions";
+    if (item.status === "failed") actions.append(action("Relancer", "secondary", () => mutate("/sources/" + item.id + "/retry", "POST")));
+    if (item.status === "ready" && item.audio_url) {
+      const button = action("Télécharger", "secondary", () => downloadAudio(item.audio_url, item.title || item.video_id));
+      actions.append(button);
+    }
+    actions.append(action("Supprimer", "danger", () => removeItem(item.id)));
+    card.append(image, details, actions);
+    return card;
+  }
+  function formatNumber(value) { return new Intl.NumberFormat("fr-FR").format(value); }
+  function formatDuration(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds)));
+    const hours = Math.floor(total / 3600), minutes = Math.floor((total % 3600) / 60), remainder = total % 60;
+    if (hours) return hours + " h " + minutes + " min";
+    if (minutes) return minutes + " min " + remainder + " s";
+    return remainder + " s";
   }
   function action(label, className, callback) { const button = document.createElement("button"); button.textContent = label; button.className = className; button.addEventListener("click", callback); return button; }
   async function downloadAudio(path, name) {
@@ -78,11 +128,22 @@
   async function refresh() {
     if (document.hidden) return;
     try {
-      const session = await request("/session/csrf");
+      const [session, worker, firstQueue] = await Promise.all([
+        request("/session/csrf"), request("/worker/status"),
+        request("/sources?limit=" + (pageSize + 1) + "&offset=" + offset)
+      ]);
       csrfToken = session.token;
-      const [queue, worker] = await Promise.all([request("/sources?limit=100"), request("/worker/status")]);
+      let queue = firstQueue;
+      while (queue.items.length === 0 && offset > 0) {
+        offset = Math.max(0, offset - pageSize);
+        queue = await request("/sources?limit=" + (pageSize + 1) + "&offset=" + offset);
+      }
       authenticated = true;
-      renderItems(queue.items);
+      hasNextPage = queue.items.length > pageSize;
+      renderItems(queue.items.slice(0, pageSize));
+      el("previous").disabled = offset === 0;
+      el("next").disabled = !hasNextPage;
+      el("page").textContent = "Page " + (Math.floor(offset / pageSize) + 1);
       el("summary").textContent = `${worker.pending} en attente · ${worker.downloading} en cours · ${worker.ready} terminée(s) · ${worker.failed} en échec · ${worker.successful_downloads_24h} réussite(s) sur 24 h${worker.active_run ? ` · lot #${worker.active_run.id} ${worker.active_run.status}` : ""}`;
       el("pause").textContent = worker.paused ? "Reprendre" : "Pause";
       el("pause").dataset.paused = String(worker.paused);
@@ -106,6 +167,8 @@
     el("summary").textContent = "Connectez-vous pour afficher les vidéos."; say("Session terminée");
   });
   el("refresh").addEventListener("click", refresh);
+  el("previous").addEventListener("click", () => { offset = Math.max(0, offset - pageSize); refresh(); });
+  el("next").addEventListener("click", () => { if (hasNextPage) { offset += pageSize; refresh(); } });
   el("pause").addEventListener("click", () => mutate(el("pause").dataset.paused === "true" ? "/worker/resume" : "/worker/pause", "POST"));
   el("run").addEventListener("submit", (event) => { event.preventDefault(); mutate("/downloads/run", "POST", { count: Number(el("count").value) }); });
   el("add").addEventListener("submit", async (event) => { event.preventDefault(); const url = new FormData(event.currentTarget).get("url"); try { await request("/sources", { method: "POST", body: JSON.stringify({ url }) }); event.currentTarget.reset(); say("Vidéo ajoutée"); await refresh(); } catch (error) { say(error.message); } });
