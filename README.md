@@ -80,7 +80,7 @@ docker buildx build --platform linux/arm64 --load -t youtube-cache-proxy:local .
 Sur une machine ARM64, `docker build -t youtube-cache-proxy:local .` utilise directement son architecture native. Pour lancer le conteneur, fournir les deux jetons et le secret de session requis :
 
 ```sh
-docker run --rm -p 127.0.0.1:8080:8080 \
+docker run --rm -p 127.0.0.1:8081:8080 \
   -e PRODUCER_TOKEN="<jeton-producer-de-32-caracteres-minimum>" \
   -e ADMIN_TOKEN="<jeton-admin-different-de-32-caracteres-minimum>" \
   -e SESSION_SECRET="<secret-session-different-des-jetons>" \
@@ -92,7 +92,7 @@ L'image écoute sur `0.0.0.0:8080` et conserve SQLite et les fichiers audio dans
 
 ## Lancer avec Docker Compose
 
-Copier `.env.example` vers `.env`, puis renseigner trois secrets distincts d'au moins 32 caractères (par exemple avec `openssl rand -hex 32` pour chacun). Le fichier `.env` est ignoré par Git et exclu du contexte de build. Protéger ses permissions avec `chmod 600 .env`.
+Copier `.env.example` vers `.env`, puis renseigner trois secrets distincts d'au moins 32 caractères. Exécuter `openssl rand -hex 32` trois fois et copier un résultat différent dans `PRODUCER_TOKEN`, `ADMIN_TOKEN` et `SESSION_SECRET`. Chaque résultat contient 64 caractères aléatoires ; ne pas utiliser de mot de passe inventé. Le fichier `.env` est ignoré par Git et exclu du contexte de build. Protéger ses permissions avec `chmod 600 .env`.
 
 ```sh
 cp .env.example .env
@@ -100,10 +100,10 @@ cp .env.example .env
 chmod 600 .env
 docker compose up -d --build
 docker compose ps
-curl --fail http://127.0.0.1:8080/health
+curl --fail http://127.0.0.1:8081/health
 ```
 
-Le port est publié uniquement sur `127.0.0.1:8080` de l'hôte. Le healthcheck interroge `/health` toutes les 30 secondes depuis le conteneur, sans outil supplémentaire. `restart: unless-stopped` relance le service après une sortie du processus ou un redémarrage Docker ; un état `unhealthy` seul ne déclenche pas de redémarrage.
+Le port est publié uniquement sur `127.0.0.1:8081` de l'hôte par défaut, pour laisser le port 8080 disponible aux autres projets. Pour choisir un autre port libre, modifier `HOST_PORT=8081` dans `.env`, puis exécuter `docker compose up -d` et utiliser ce port dans les URL. Le port interne reste `8080`. Le healthcheck interroge `/health` toutes les 30 secondes depuis le conteneur, sans outil supplémentaire. `restart: unless-stopped` relance le service après une sortie du processus ou un redémarrage Docker ; un état `unhealthy` seul ne déclenche pas de redémarrage.
 
 Le volume nommé `cache-data`, préfixé par le nom du projet Compose, conserve SQLite et ses fichiers WAL ainsi que les audios sous `/data`. Il reste présent après `docker compose down` et une recréation du conteneur. Garder le même nom de projet pour retrouver ces données. **`docker compose down -v` supprime le volume et toutes ses données.**
 
