@@ -13,9 +13,13 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
-	http.Error(w, message, status)
+	if status >= http.StatusInternalServerError {
+		message = "internal server error"
+	}
+	writeJSON(w, status, errorResponse{Code: errorCode(status), Message: message})
 }
 
 func itoa(value int64) string {
 	return strconv.FormatInt(value, 10)
 }
+
