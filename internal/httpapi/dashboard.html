@@ -65,7 +65,7 @@
     } catch (error) { say(error.message); }
   }
   async function refresh() {
-    if (!token || document.hidden) return;
+    if (document.hidden) return;
     try {
       const [queue, worker] = await Promise.all([request("/sources?limit=100"), request("/worker/status")]);
       authenticated = true;
