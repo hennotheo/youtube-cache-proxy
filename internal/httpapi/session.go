@@ -28,6 +28,7 @@ func (a *API) loginSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	var request sessionLoginRequest
 	if len(a.sessionSecret) == 0 {
 		writeError(w, http.StatusInternalServerError, "session service unavailable")
@@ -62,6 +63,7 @@ func (a *API) csrfToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	token, ok := a.adminSessionCSRFToken(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "admin session required")
@@ -77,6 +79,7 @@ func (a *API) logoutSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	http.SetCookie(w, &http.Cookie{
 		Name: adminSessionCookie, Value: "", Path: "/", MaxAge: -1,
 		Expires: time.Unix(1, 0), HttpOnly: true, Secure: true,
