@@ -33,7 +33,17 @@ func (a *API) requireRoleFunc(role func(*http.Request) accessRole, next http.Han
 }
 
 func (a *API) authorized(w http.ResponseWriter, r *http.Request, required accessRole) bool {
-	if r.Header.Get("Authorization") == "" && a.hasAdminSession(r) {
+	if r.Header.Get("Authorization") == "" {
+		csrfToken, ok := a.adminSessionCSRFToken(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "admin session required")
+			return false
+		}
+		if csrfProtectedMethod(r.Method) &&
+			subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(csrfToken)) != 1 {
+			writeError(w, http.StatusForbidden, "valid CSRF token required")
+			return false
+		}
 		return true
 	}
 	token, ok := bearerToken(r.Header.Get("Authorization"))
@@ -53,6 +63,11 @@ func (a *API) authorized(w http.ResponseWriter, r *http.Request, required access
 	}
 	writeError(w, http.StatusUnauthorized, "invalid bearer token")
 	return false
+}
+
+// csrfProtectedMethod reports whether a request can change application state.
+func csrfProtectedMethod(method string) bool {
+	return method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions
 }
 
 func bearerToken(header string) (string, bool) {
