@@ -28,7 +28,7 @@ func (a *API) sources(w http.ResponseWriter, r *http.Request) {
 func (a *API) createSource(w http.ResponseWriter, r *http.Request) {
 	var request createSourceRequest
 	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON request")
+		writeDecodeError(w, err, "invalid JSON request")
 		return
 	}
 	videoID, _, err := youtube.ParseVideoURL(request.URL)
@@ -63,12 +63,24 @@ func (a *API) listSources(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid limit")
 		return
 	}
+	if len(query["limit"]) > 1 {
+		writeError(w, http.StatusBadRequest, "invalid limit")
+		return
+	}
 	offset, err := queryInt(query.Get("offset"), 0, 0, int(^uint(0)>>1))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid offset")
 		return
 	}
+	if len(query["offset"]) > 1 {
+		writeError(w, http.StatusBadRequest, "invalid offset")
+		return
+	}
 	status := query.Get("status")
+	if len(query["status"]) > 1 {
+		writeError(w, http.StatusBadRequest, "invalid status filter")
+		return
+	}
 	videoID, ok := sourceVideoIDFilter(query)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid video_id filter")
@@ -104,7 +116,7 @@ func sourceVideoIDFilter(query url.Values) (string, bool) {
 func (a *API) source(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/sources/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
-		http.NotFound(w, r)
+		writeError(w, http.StatusNotFound, "source not found")
 		return
 	}
 	id, err := strconv.ParseInt(parts[0], 10, 64)
@@ -119,12 +131,12 @@ func (a *API) source(w http.ResponseWriter, r *http.Request) {
 		case "retry":
 			a.retrySource(w, r, id)
 		default:
-			http.NotFound(w, r)
+			writeError(w, http.StatusNotFound, "source not found")
 		}
 		return
 	}
 	if len(parts) != 1 {
-		http.NotFound(w, r)
+		writeError(w, http.StatusNotFound, "source not found")
 		return
 	}
 	switch r.Method {
@@ -169,6 +181,15 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, value any) error {
 	return nil
 }
 
+func writeDecodeError(w http.ResponseWriter, err error, message string) {
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body is too large")
+		return
+	}
+	writeError(w, http.StatusBadRequest, message)
+}
+
 func queryInt(raw string, fallback, minimum, maximum int) (int, error) {
 	if raw == "" {
 		return fallback, nil
@@ -190,3 +211,4 @@ func writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
 }
+

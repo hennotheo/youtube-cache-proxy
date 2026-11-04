@@ -28,7 +28,11 @@ func (a *API) runDownloads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request runRequest
-	if err := decodeJSON(w, r, &request); err != nil || request.Count < 1 || request.Count > 100 {
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDecodeError(w, err, "invalid JSON request")
+		return
+	}
+	if request.Count < 1 || request.Count > 100 {
 		writeError(w, http.StatusBadRequest, "count must be between 1 and 100")
 		return
 	}
@@ -53,3 +57,4 @@ func removeAudio(source store.Source) error {
 	}
 	return err
 }
+

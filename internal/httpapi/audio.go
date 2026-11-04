@@ -24,5 +24,6 @@ func (a *API) serveAudio(w http.ResponseWriter, r *http.Request, sourceID int64)
 	if source.AudioMime.Valid {
 		w.Header().Set("Content-Type", source.AudioMime.String)
 	}
-	http.ServeFile(w, r, source.AudioPath.String)
+	serveAudioFile(w, r, source.AudioPath.String)
 }
+

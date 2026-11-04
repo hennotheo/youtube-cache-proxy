@@ -34,8 +34,8 @@ func (a *API) loginSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "session service unavailable")
 		return
 	}
-	if decodeJSON(w, r, &request) != nil {
-		writeError(w, http.StatusBadRequest, "invalid session login request")
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDecodeError(w, err, "invalid session login request")
 		return
 	}
 	if !a.isAdminToken(request.Token) {

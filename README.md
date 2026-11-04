@@ -17,7 +17,7 @@ Le dépôt contient les fondations du backend :
 - un moteur interne qui réserve un lot manuel, traite les téléchargements en arrière-plan, respecte le quota glissant sur 24 h et attend une pause aléatoire entre tentatives ;
 - une classification des erreurs `yt-dlp` pour distinguer les échecs réseau relançables des erreurs définitives.
 
-**L'API de base et un tableau de bord sont disponibles, mais le projet reste en développement.** Le tableau de bord est accessible à `/` et `/dashboard` ; il permet d'ajouter une vidéo, démarrer un lot, relancer ou supprimer une demande, et mettre le worker en pause ou le reprendre. La connexion échange le jeton administrateur contre un cookie de session signé, HttpOnly, Secure et limité à huit heures ; le jeton n'est pas conservé dans le navigateur. Les requêtes qui modifient l'état exigent aussi un jeton CSRF lié à la session. Son actualisation automatique s'interrompt lorsque l'onglet est masqué. Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable.
+**L'API de base et un tableau de bord sont disponibles, mais le projet reste en développement.** Le tableau de bord est accessible à `/` et `/dashboard` ; il permet d'ajouter une vidéo, démarrer un lot, relancer ou supprimer une demande, et mettre le worker en pause ou le reprendre. La connexion échange le jeton administrateur contre un cookie de session signé, HttpOnly, Secure et limité à huit heures ; le jeton n'est pas conservé dans le navigateur. Les requêtes qui modifient l'état exigent aussi un jeton CSRF lié à la session. Son actualisation automatique s'interrompt lorsque l'onglet est masqué. Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs REST utilisent un format JSON stable ; ne l'expose pas sur un réseau non fiable.
 
 Une image Docker multi-architecture `linux/amd64` et `linux/arm64` est disponible via le Dockerfile. Elle inclut Go 1.27.3 au build, Python 3.13.18, yt-dlp 2026.10.26, yt-dlp-ejs 0.8.0, Deno 2.9.8 et FFmpeg 5.1.9. Le service s'exécute sans privilèges root et utilise `/data` pour la base SQLite et les fichiers audio. La configuration Compose fournit un volume persistant et un healthcheck.
 
@@ -44,6 +44,8 @@ Configure `PRODUCER_TOKEN`, `ADMIN_TOKEN` et `SESSION_SECRET` avec trois valeurs
 | `POST` | `/worker/resume` | Admin : reprendre un lot actif |
 | `GET` | `/worker/status` | Admin : lire les compteurs et l'état du worker |
 | `GET` | `/health` | Public : vérifier la réponse HTTP |
+
+Les erreurs REST renvoient `{"code":"bad_request","message":"invalid JSON request"}` avec un code stable adapté au statut HTTP. Les erreurs internes ne divulguent pas leur cause. Les corps JSON sont limités à 1 Mio (au-delà, `413 payload_too_large`). Une plage audio invalide renvoie un DTO JSON `416 range_not_satisfiable` tout en conservant l’en-tête `Content-Range`.
 
 ## Lancer le serveur
 
