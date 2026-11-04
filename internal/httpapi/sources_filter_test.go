@@ -24,7 +24,7 @@ func TestListSourcesFiltersByVideoID(t *testing.T) {
 	if _, err := queue.CreateSource(ctx, "bbbbbbbbbbb", "https://youtu.be/bbbbbbbbbbb"); err != nil {
 		t.Fatal(err)
 	}
-	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken)
+	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken, sessionTestSecret)
 	request := httptest.NewRequest(http.MethodGet, "/sources?video_id=aaaaaaaaaaa", nil)
 	request.Header.Set("Authorization", "Bearer "+producerTestToken)
 	response := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestListSourcesRejectsInvalidVideoIDFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = queue.Close() })
-	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken)
+	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken, sessionTestSecret)
 	request := httptest.NewRequest(http.MethodGet, "/sources?video_id=invalid", nil)
 	request.Header.Set("Authorization", "Bearer "+producerTestToken)
 	response := httptest.NewRecorder()
@@ -70,7 +70,7 @@ func TestListSourcesCombinesVideoIDAndStatusFilters(t *testing.T) {
 	if _, err := queue.CreateSource(ctx, "aaaaaaaaaaa", "https://youtu.be/aaaaaaaaaaa"); err != nil {
 		t.Fatal(err)
 	}
-	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken)
+	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken, sessionTestSecret)
 	request := httptest.NewRequest(http.MethodGet, "/sources?video_id=aaaaaaaaaaa&status=ready", nil)
 	request.Header.Set("Authorization", "Bearer "+producerTestToken)
 	response := httptest.NewRecorder()
@@ -95,7 +95,7 @@ func TestListSourcesReturnsEmptyForUnknownVideoID(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = queue.Close() })
-	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken)
+	api := NewAPI(queue, nil, nil, producerTestToken, adminTestToken, sessionTestSecret)
 	request := httptest.NewRequest(http.MethodGet, "/sources?video_id=ccccccccccc", nil)
 	request.Header.Set("Authorization", "Bearer "+producerTestToken)
 	response := httptest.NewRecorder()
@@ -112,3 +112,4 @@ func TestListSourcesReturnsEmptyForUnknownVideoID(t *testing.T) {
 		t.Fatalf("unknown video_id returned %+v, want empty items", body.Items)
 	}
 }
+
