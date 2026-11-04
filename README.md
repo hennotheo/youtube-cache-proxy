@@ -17,9 +17,9 @@ Le dépôt contient les fondations du backend :
 - un moteur interne qui réserve un lot manuel, traite les téléchargements en arrière-plan, respecte le quota glissant sur 24 h et attend une pause aléatoire entre tentatives ;
 - une classification des erreurs `yt-dlp` pour distinguer les échecs réseau relançables des erreurs définitives.
 
-**L'API de base est maintenant utilisable, mais le projet reste en développement.** Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable. Il n'y a pas encore d'interface utilisateur ni de configuration Docker Compose dans le dépôt.
+**L'API de base est maintenant utilisable, mais le projet reste en développement.** Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs JSON uniformes restent à finaliser ; ne l'expose pas sur un réseau non fiable. Il n'y a pas encore d'interface utilisateur dans le dépôt.
 
-Une image Docker multi-architecture `linux/amd64` et `linux/arm64` est disponible via le Dockerfile. Elle inclut Go 1.27.3 au build, Python 3.13.18, yt-dlp 2026.10.26, yt-dlp-ejs 0.8.0, Deno 2.9.8 et FFmpeg 5.1.9. Le service s'exécute sans privilèges root et utilise `/data` pour la base SQLite et les fichiers audio. La configuration Compose avec volumes persistants et healthcheck reste à venir.
+Une image Docker multi-architecture `linux/amd64` et `linux/arm64` est disponible via le Dockerfile. Elle inclut Go 1.27.3 au build, Python 3.13.18, yt-dlp 2026.10.26, yt-dlp-ejs 0.8.0, Deno 2.9.8 et FFmpeg 5.1.9. Le service s'exécute sans privilèges root et utilise `/data` pour la base SQLite et les fichiers audio. La configuration Compose fournit un volume persistant et un healthcheck.
 
 L'API exige un jeton Bearer : le rôle `producer` peut ajouter et consulter les sources et récupérer l'audio ; le rôle `admin` peut aussi démarrer des lots, relancer ou supprimer une source et contrôler le worker. `/health` reste public. L'endpoint audio utilise le service de fichiers Go, qui prend en charge les requêtes Range.
 
@@ -80,7 +80,7 @@ docker buildx build --platform linux/arm64 --load -t youtube-cache-proxy:local .
 Sur une machine ARM64, `docker build -t youtube-cache-proxy:local .` utilise directement son architecture native. Pour lancer le conteneur, fournir les deux jetons et le secret de session requis :
 
 ```sh
-docker run --rm -p 8080:8080 \
+docker run --rm -p 127.0.0.1:8080:8080 \
   -e PRODUCER_TOKEN="<jeton-producer-de-32-caracteres-minimum>" \
   -e ADMIN_TOKEN="<jeton-admin-different-de-32-caracteres-minimum>" \
   -e SESSION_SECRET="<secret-session-different-des-jetons>" \
@@ -88,7 +88,26 @@ docker run --rm -p 8080:8080 \
   youtube-cache-proxy:local
 ```
 
-L'image écoute sur `0.0.0.0:8080` et conserve SQLite et les fichiers audio dans `/data`. Une commande Docker Compose avec volumes et healthcheck sera ajoutée dans une issue suivante.
+L'image écoute sur `0.0.0.0:8080` et conserve SQLite et les fichiers audio dans `/data`. Le fichier Compose ci-dessous utilise les mêmes chemins.
+
+## Lancer avec Docker Compose
+
+Copier `.env.example` vers `.env`, puis renseigner trois secrets distincts d'au moins 32 caractères (par exemple avec `openssl rand -hex 32` pour chacun). Le fichier `.env` est ignoré par Git et exclu du contexte de build. Protéger ses permissions avec `chmod 600 .env`.
+
+```sh
+cp .env.example .env
+# Renseigner PRODUCER_TOKEN, ADMIN_TOKEN et SESSION_SECRET dans .env.
+chmod 600 .env
+docker compose up -d --build
+docker compose ps
+curl --fail http://127.0.0.1:8080/health
+```
+
+Le port est publié uniquement sur `127.0.0.1:8080` de l'hôte. Le healthcheck interroge `/health` toutes les 30 secondes depuis le conteneur, sans outil supplémentaire. `restart: unless-stopped` relance le service après une sortie du processus ou un redémarrage Docker ; un état `unhealthy` seul ne déclenche pas de redémarrage.
+
+Le volume nommé `cache-data`, préfixé par le nom du projet Compose, conserve SQLite et ses fichiers WAL ainsi que les audios sous `/data`. Il reste présent après `docker compose down` et une recréation du conteneur. Garder le même nom de projet pour retrouver ces données. **`docker compose down -v` supprime le volume et toutes ses données.**
+
+Consulter les logs avec `docker compose logs --tail=100 youtube-cache-proxy` et arrêter le service avec `docker compose down`. Aucun téléchargement ne démarre automatiquement : le lancement d'un lot reste une action admin explicite.
 
 ## Vérifications
 
