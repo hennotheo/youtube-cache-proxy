@@ -91,7 +91,7 @@ func extractVideoID(parsed *url.URL) (string, error) {
 
 func validateQuery(query url.Values) error {
 	for key, values := range query {
-		if key != "v" && key != "t" && key != "start" && key != "si" && key != "feature" {
+		if key != "v" && key != "t" && key != "start" && key != "si" && key != "feature" && key != "list" && key != "index" {
 			return fmt.Errorf("%w: unsupported query parameter", ErrInvalidVideoURL)
 		}
 		if len(values) != 1 || values[0] == "" {

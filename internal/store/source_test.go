@@ -95,8 +95,8 @@ func TestCreateSourceValidatesAndCanonicalizesVideoURL(t *testing.T) {
 		t.Fatalf("stored URL = %q, want %q", source.URL, want)
 	}
 
-	if _, err := s.CreateSource(ctx, "abc123def45", "https://www.youtube.com/watch?v=abc123def45&list=PL123"); !errors.Is(err, youtube.ErrInvalidVideoURL) {
-		t.Fatalf("playlist URL error = %v, want ErrInvalidVideoURL", err)
+	if _, err := s.CreateSource(ctx, "abc123def45", "https://www.youtube.com/playlist?list=PL123"); !errors.Is(err, youtube.ErrInvalidVideoURL) {
+		t.Fatalf("playlist-only URL error = %v, want ErrInvalidVideoURL", err)
 	}
 	if _, err := s.CreateSource(ctx, "differentID1", "https://www.youtube.com/watch?v=abc123def45"); !errors.Is(err, youtube.ErrInvalidVideoURL) {
 		t.Fatalf("mismatched video ID error = %v, want ErrInvalidVideoURL", err)
