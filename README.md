@@ -17,7 +17,7 @@ Le dépôt contient les fondations du backend :
 - un moteur interne qui réserve un lot manuel, traite les téléchargements en arrière-plan, respecte le quota glissant sur 24 h et attend une pause aléatoire entre tentatives ;
 - une classification des erreurs `yt-dlp` pour distinguer les échecs réseau relançables des erreurs définitives.
 
-**L'API de base et un tableau de bord sont disponibles, mais le projet reste en développement.** Le tableau de bord est accessible à `/` et `/dashboard` ; il permet d'ajouter une vidéo, démarrer un lot, relancer ou supprimer une demande, et mettre le worker en pause ou le reprendre. Il affiche les compteurs par état, les réussites sur 24 h et une liste paginée de 20 sources. Chaque source peut afficher ses métadonnées YouTube et son erreur éventuelle. La liste s'adapte aux petits écrans. La connexion échange le jeton administrateur contre un cookie de session signé, HttpOnly, Secure et limité à huit heures ; le jeton n'est pas conservé dans le navigateur. Les requêtes qui modifient l'état exigent aussi un jeton CSRF lié à la session. Son actualisation automatique s'interrompt lorsque l'onglet est masqué. Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs REST utilisent un format JSON stable ; ne l'expose pas sur un réseau non fiable.
+**L'API de base et un tableau de bord sont disponibles, mais le projet reste en développement.** Le tableau de bord est accessible à `/` et `/dashboard` ; il permet d'ajouter une vidéo, démarrer un lot, relancer ou supprimer une demande, et mettre le worker en pause ou le reprendre. Il affiche les compteurs par état, les réussites sur 24 h et une liste paginée de 20 sources. Chaque source peut afficher ses métadonnées YouTube et son erreur éventuelle. La liste s'adapte aux petits écrans. La connexion échange le jeton administrateur contre un cookie de session signé, HttpOnly, Secure et limité à huit heures, ou 30 jours avec « Rester connecté » ; le jeton n'est pas conservé dans le navigateur. Les requêtes qui modifient l'état exigent aussi un jeton CSRF lié à la session. Son actualisation automatique s'interrompt lorsque l'onglet est masqué. Les routes REST listées ci-dessous sont disponibles, notamment la récupération des fichiers audio. Les erreurs REST utilisent un format JSON stable ; ne l'expose pas sur un réseau non fiable.
 
 Une image Docker multi-architecture `linux/amd64` et `linux/arm64` est disponible via le Dockerfile. Elle inclut Go 1.27.3 au build, Python 3.13.18, yt-dlp 2026.10.26, yt-dlp-ejs 0.8.0, Deno 2.9.8 et FFmpeg 5.1.9. Le service s'exécute sans privilèges root et utilise `/data` pour la base SQLite et les fichiers audio. La configuration Compose fournit un volume persistant et un healthcheck.
 
@@ -105,7 +105,7 @@ docker compose ps
 curl --fail http://127.0.0.1:8081/health
 ```
 
-Ouvrir `http://127.0.0.1:8081/` dans un navigateur pour utiliser le tableau de bord. Saisir le jeton `ADMIN_TOKEN` pour ouvrir une session valable huit heures. Il est échangé contre un cookie signé et protégé ; le navigateur ne conserve pas le jeton. Pour utiliser le cookie `Secure`, servir le tableau de bord en HTTPS.
+Ouvrir `http://127.0.0.1:8081/` dans un navigateur pour utiliser le tableau de bord. Saisir le jeton `ADMIN_TOKEN` pour ouvrir une session valable 30 jours avec « Rester connecté » coché (huit heures si décoché). Il est échangé contre un cookie signé et protégé ; le navigateur ne conserve pas le jeton. Pour utiliser le cookie `Secure`, servir le tableau de bord en HTTPS.
 
 Le port est publié uniquement sur `127.0.0.1:8081` de l'hôte par défaut, pour laisser le port 8080 disponible aux autres projets. Pour choisir un autre port libre, modifier `HOST_PORT=8081` dans `.env`, puis exécuter `docker compose up -d` et utiliser ce port dans les URL. Le port interne reste `8080`. Le healthcheck interroge `/health` toutes les 30 secondes depuis le conteneur, sans outil supplémentaire. `restart: unless-stopped` relance le service après une sortie du processus ou un redémarrage Docker ; un état `unhealthy` seul ne déclenche pas de redémarrage.
 
@@ -119,3 +119,51 @@ Consulter les logs avec `docker compose logs --tail=100 youtube-cache-proxy` et 
 go test ./...
 go vet ./...
 ```
+
+## Cache de découverte — Phase 1
+
+Le cache de découverte est indépendant de la file audio : une recherche ne crée
+aucun téléchargement. Configurer `YOUTUBE_API_KEY` pour activer les recherches
+YouTube Data API v3. Sans clé, les lectures restent disponibles et le lancement
+renvoie 503. La clé reste côté serveur.
+
+| Méthode | Endpoint | Accès et contrat |
+|---|---|---|
+| POST | /discovery/searches | Admin, corps ci-dessous, réponse 202 et Location |
+| GET | /discovery/searches/{id} | Producer/Admin, statut persistant et erreur |
+| GET | /discovery/videos | Producer/Admin, lecture SQLite paginée |
+
+Exemple de corps :
+```json
+{"query":"énergie solaire","channelId":"","publishedAfter":"2026-01-01T00:00:00Z","publishedBefore":"2026-11-01T00:00:00Z"}
+```
+
+Au moins `query` ou `channelId` est requis. Une recherche effectue au maximum une
+page de 50 résultats (`search.list`, coût YouTube de 100 unités), puis un appel
+`videos.list` groupé pour obtenir les métadonnées et durées (1 unité).
+Une nouvelle demande POST est une nouvelle exécution explicitement facturable.
+Les vidéos sont uniques par identifiant YouTube et associées à chaque recherche.
+Aucun accès réel à YouTube n'est nécessaire aux tests.
+
+La liste retourne `{"items":[],"limit":50,"offset":0}`. Filtres :
+`searchId`, `channelId`, `publishedAfter`, `publishedBefore`,
+`limit` (1–100, défaut 50), `offset` (défaut 0), `sort`
+(`-publishedAt` par défaut ou `publishedAt`). L'ordre inclut l'identifiant vidéo
+pour stabiliser les pages. Les vidéos contiennent titre, description, chaîne,
+miniature, publication, durée ISO 8601 et date de mise en cache. Le lien YouTube
+se construit avec `https://www.youtube.com/watch?v={videoId}`.
+Les associations d'origine sont consultables avec `searchId` et le détail de recherche.
+
+Le worker traite une recherche à la fois, attend une seconde après chaque recherche
+et dort sur une notification lorsqu'il est inactif. Les appels HTTP utilisent un
+client réutilisé, avec délai réseau de 30 secondes et délai global de 45 secondes
+par recherche. Les résultats et le statut completed sont écrits dans une transaction.
+Les statuts sont queued, running, completed, failed et interrupted. Après redémarrage,
+les recherches queued sont reprises ; les running deviennent interrupted, sans
+répéter un appel potentiellement consommé. L'arrêt annule l'appel en cours et attend
+le worker avant de fermer SQLite.
+
+Cette livraison se limite à la Phase 1. Les règles, quota quotidien, backoff,
+rafraîchissement et expiration seront ajoutés en Phase 2/4 ; le score,
+`ruleId`, `minScore`, `reviewStatus` et le dashboard de découverte en Phase 3.
+Les lectures servent toujours les données persistées et ne les actualisent jamais.

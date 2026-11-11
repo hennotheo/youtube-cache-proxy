@@ -25,7 +25,7 @@
 <body>
   <header><div><h1>YouTube Cache Proxy</h1><p class="muted">Gestion des vidéos et du worker</p></div><div class="toolbar"><button id="pause" class="secondary">Pause</button><button id="refresh" class="secondary">Actualiser</button></div></header>
   <main>
-    <section class="panel" aria-label="Connexion"><form id="login"><label for="token">Jeton administrateur</label><div class="toolbar"><input id="token" type="password" autocomplete="off" placeholder="Jeton administrateur" required><button>Se connecter</button></div></form><button id="logout" class="secondary">Déconnexion</button><span id="message" role="status" aria-live="polite"></span></section>
+    <section class="panel" aria-label="Connexion"><form id="login"><label for="token">Jeton administrateur</label><div class="toolbar"><input id="token" type="password" autocomplete="off" placeholder="Jeton administrateur" required><button>Se connecter</button></div><label><input id="remember" type="checkbox" checked> Rester connecté pendant 30 jours</label></form><button id="logout" class="secondary">Déconnexion</button><span id="message" role="status" aria-live="polite"></span></section>
     <section class="panel"><h2>Ajouter une vidéo</h2><form id="add"><input name="url" type="url" required placeholder="https://www.youtube.com/watch?v=…"><button>Ajouter</button></form></section>
     <section class="panel"><div><h2>File d’attente</h2><p id="summary" class="muted">Connectez-vous pour afficher les vidéos.</p></div><form id="run"><label for="count">Lancer</label><input id="count" name="count" type="number" min="1" max="100" value="3"><span>vidéos en attente</span><button>Démarrer</button></form></section>
     <div id="items"></div>
@@ -157,7 +157,7 @@
     event.preventDefault();
     const input = el("token");
     try {
-      await request("/session/login", { method: "POST", body: JSON.stringify({ token: input.value }) });
+      await request("/session/login", { method: "POST", body: JSON.stringify({ token: input.value, remember: el("remember").checked }) });
       input.value = ""; say("Connexion établie"); await refresh(); schedule();
     } catch (error) { input.value = ""; say(error.message); }
   });

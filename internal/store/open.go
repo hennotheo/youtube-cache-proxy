@@ -51,6 +51,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := store.RecoverSearches(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	release = false
 	return store, nil
 }
