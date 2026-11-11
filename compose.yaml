@@ -10,6 +10,7 @@ services:
       AUDIO_DIR: /data/audio
       PRODUCER_TOKEN: ${PRODUCER_TOKEN:?Set PRODUCER_TOKEN in .env}
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
     volumes:
       - cache-data:/data

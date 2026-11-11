@@ -35,6 +35,8 @@ type BatchWorker interface {
 
 // API serves queue, audio, and worker operations over HTTP.
 type API struct {
+	discovery         DiscoveryRepository
+	discoveryWorker   DiscoveryNotifier
 	repository        Repository
 	worker            BatchWorker
 	metadataProvider  MetadataProvider
@@ -60,6 +62,7 @@ func (a *API) isAdminToken(token string) bool {
 }
 
 func (a *API) register(mux *http.ServeMux) {
+	a.registerDiscovery(mux)
 	mux.HandleFunc("/session/login", a.loginSession)
 	mux.Handle("/session/csrf", a.requireRole(adminRole, a.csrfToken))
 	mux.Handle("/session/logout", a.requireRole(adminRole, a.logoutSession))
@@ -70,4 +73,3 @@ func (a *API) register(mux *http.ServeMux) {
 	mux.Handle("/worker/resume", a.requireRole(adminRole, a.resumeWorker))
 	mux.Handle("/worker/status", a.requireRole(adminRole, a.workerStatus))
 }
-

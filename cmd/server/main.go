@@ -4,11 +4,13 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/hennotheo/youtube-cache-proxy/internal/config"
+	"github.com/hennotheo/youtube-cache-proxy/internal/discovery"
 	"github.com/hennotheo/youtube-cache-proxy/internal/httpapi"
 	"github.com/hennotheo/youtube-cache-proxy/internal/server"
 	"github.com/hennotheo/youtube-cache-proxy/internal/store"
@@ -49,8 +51,17 @@ func main() {
 	}
 	log.Printf("HTTP server listening on %s", listener.Addr())
 	api := httpapi.NewAPI(queue, batchWorker, downloader, settings.ProducerToken, settings.AdminToken, settings.SessionSecret)
+	if key := os.Getenv("YOUTUBE_API_KEY"); key != "" {
+		discoveryWorker, err := discovery.NewWorker(ctx, queue, discovery.NewClient(key))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer discoveryWorker.Close()
+		api.EnableDiscovery(queue, discoveryWorker)
+	} else {
+		api.EnableDiscovery(queue, nil)
+	}
 	if err := server.Run(ctx, listener, httpapi.NewRouter(api)); err != nil {
 		log.Fatal(err)
 	}
 }
-

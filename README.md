@@ -119,3 +119,51 @@ Consulter les logs avec `docker compose logs --tail=100 youtube-cache-proxy` et 
 go test ./...
 go vet ./...
 ```
+
+## Cache de découverte — Phase 1
+
+Le cache de découverte est indépendant de la file audio : une recherche ne crée
+aucun téléchargement. Configurer `YOUTUBE_API_KEY` pour activer les recherches
+YouTube Data API v3. Sans clé, les lectures restent disponibles et le lancement
+renvoie 503. La clé reste côté serveur.
+
+| Méthode | Endpoint | Accès et contrat |
+|---|---|---|
+| POST | /discovery/searches | Admin, corps ci-dessous, réponse 202 et Location |
+| GET | /discovery/searches/{id} | Producer/Admin, statut persistant et erreur |
+| GET | /discovery/videos | Producer/Admin, lecture SQLite paginée |
+
+Exemple de corps :
+```json
+{"query":"énergie solaire","channelId":"","publishedAfter":"2026-01-01T00:00:00Z","publishedBefore":"2026-11-01T00:00:00Z"}
+```
+
+Au moins `query` ou `channelId` est requis. Une recherche effectue au maximum une
+page de 50 résultats (`search.list`, coût YouTube de 100 unités), puis un appel
+`videos.list` groupé pour obtenir les métadonnées et durées (1 unité).
+Une nouvelle demande POST est une nouvelle exécution explicitement facturable.
+Les vidéos sont uniques par identifiant YouTube et associées à chaque recherche.
+Aucun accès réel à YouTube n'est nécessaire aux tests.
+
+La liste retourne `{"items":[],"limit":50,"offset":0}`. Filtres :
+`searchId`, `channelId`, `publishedAfter`, `publishedBefore`,
+`limit` (1–100, défaut 50), `offset` (défaut 0), `sort`
+(`-publishedAt` par défaut ou `publishedAt`). L'ordre inclut l'identifiant vidéo
+pour stabiliser les pages. Les vidéos contiennent titre, description, chaîne,
+miniature, publication, durée ISO 8601 et date de mise en cache. Le lien YouTube
+se construit avec `https://www.youtube.com/watch?v={videoId}`.
+Les associations d'origine sont consultables avec `searchId` et le détail de recherche.
+
+Le worker traite une recherche à la fois, attend une seconde après chaque recherche
+et dort sur une notification lorsqu'il est inactif. Les appels HTTP utilisent un
+client réutilisé, avec délai réseau de 30 secondes et délai global de 45 secondes
+par recherche. Les résultats et le statut completed sont écrits dans une transaction.
+Les statuts sont queued, running, completed, failed et interrupted. Après redémarrage,
+les recherches queued sont reprises ; les running deviennent interrupted, sans
+répéter un appel potentiellement consommé. L'arrêt annule l'appel en cours et attend
+le worker avant de fermer SQLite.
+
+Cette livraison se limite à la Phase 1. Les règles, quota quotidien, backoff,
+rafraîchissement et expiration seront ajoutés en Phase 2/4 ; le score,
+`ruleId`, `minScore`, `reviewStatus` et le dashboard de découverte en Phase 3.
+Les lectures servent toujours les données persistées et ne les actualisent jamais.
