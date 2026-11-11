@@ -12,13 +12,15 @@ import (
 )
 
 const (
-	adminSessionCookie = "ycp_admin_session"
-	adminSessionTTL    = 8 * time.Hour
+	adminSessionCookie        = "ycp_admin_session"
+	adminSessionTTL           = 8 * time.Hour
+	rememberedAdminSessionTTL = 30 * 24 * time.Hour
 )
 
 // sessionLoginRequest contains the admin credential exchanged for a session.
 type sessionLoginRequest struct {
-	Token string "json:\"token\""
+	Token    string `json:"token"`
+	Remember bool   `json:"remember"`
 }
 
 // loginSession exchanges the admin token for a time-limited signed cookie.
@@ -47,10 +49,14 @@ func (a *API) loginSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create admin session")
 		return
 	}
-	expires := time.Now().Add(adminSessionTTL)
+	ttl := adminSessionTTL
+	if request.Remember {
+		ttl = rememberedAdminSessionTTL
+	}
+	expires := time.Now().Add(ttl)
 	http.SetCookie(w, &http.Cookie{
 		Name: adminSessionCookie, Value: a.signSession(expires.Unix(), csrfToken), Path: "/",
-		Expires: expires, MaxAge: int(adminSessionTTL.Seconds()), HttpOnly: true,
+		Expires: expires, MaxAge: int(ttl.Seconds()), HttpOnly: true,
 		Secure: true, SameSite: http.SameSiteStrictMode,
 	})
 	w.WriteHeader(http.StatusNoContent)
@@ -139,4 +145,3 @@ func (a *API) sessionSignature(value string) []byte {
 	_, _ = signature.Write([]byte(value))
 	return signature.Sum(nil)
 }
-
